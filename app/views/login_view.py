@@ -1,9 +1,8 @@
 from django.views import View
 from django.http import HttpResponse
 from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate,login
 from django.urls import reverse as r
-from app.services import login_with_api, LoginAPIError
+from app.services import login_with_api, APIError
 class login_view(View):
     template_name = "login_template.html"
 
@@ -33,7 +32,7 @@ class login_view(View):
                 request.session["refresh_token"] = tokens.get("refresh")
 
                 return redirect(r("dashboard"))
-            except LoginAPIError as exc:
+            except APIError as exc:
                 context["form"]["non_field_errors"].append(str(exc))
 
         return render(request, self.template_name, context)
