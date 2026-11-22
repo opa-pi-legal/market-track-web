@@ -1,0 +1,104 @@
+{% extends "base_app.html" %}
+{% block title %}Equipe Staff — MercadoTracker{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <h1 class="mt-page-title">Gestão de Contas Staff</h1>
+    <p class="mt-page-sub">Rota segura exclusiva para operadores Staff criarem ou promoverem novos membros da equipe.</p>
+  </div>
+  <span class="mt-badge-global py-2 px-3">
+    <i class="bi bi-shield-lock-fill"></i> Acesso Restrito · Staff
+  </span>
+</div>
+
+<div class="row g-4">
+  <!-- Formulário de criação / promoção Staff -->
+  <div class="col-lg-5">
+    <div class="mt-surface-card">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title">
+          <i class="bi bi-person-plus-fill text-success"></i> Criar ou promover conta Staff
+        </h2>
+      </div>
+      <p class="small text-secondary mb-3">
+        Se o e-mail ainda não existir, uma nova conta Staff será criada. Se já existir no aplicativo, será promovida para Staff.
+      </p>
+
+      <form method="post" action="{% url 'staff_create' %}" class="d-flex flex-column gap-3">
+        {% csrf_token %}
+
+        <div>
+          <label class="form-label small fw-semibold mb-1" for="staff_email">E-mail corporativo / pessoal *</label>
+          <input type="email" id="staff_email" name="email" required placeholder="operador@dominio.com" class="mt-input" />
+        </div>
+
+        <div>
+          <label class="form-label small fw-semibold mb-1" for="staff_username">Nome de usuário (opcional)</label>
+          <input type="text" id="staff_username" name="username" placeholder="Ex.: maria_staff" class="mt-input" />
+        </div>
+
+        <div>
+          <label class="form-label small fw-semibold mb-1" for="staff_password">Senha (obrigatória para conta nova)</label>
+          <input type="password" id="staff_password" name="password" minlength="6" placeholder="Mínimo 6 caracteres" class="mt-input" autocomplete="new-password" />
+        </div>
+
+        <div>
+          <label class="form-label small fw-semibold mb-1" for="staff_password2">Confirmar senha</label>
+          <input type="password" id="staff_password2" name="password2" minlength="6" placeholder="Repita a senha" class="mt-input" autocomplete="new-password" />
+        </div>
+
+        <button type="submit" class="mt-btn-primary w-100 py-2 mt-1">
+          <i class="bi bi-shield-plus"></i> Salvar conta Staff
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Lista de contas Staff ativas -->
+  <div class="col-lg-7">
+    <div class="mt-surface-card h-100">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title">
+          <i class="bi bi-people-fill text-success"></i> Operadores Staff ativos ({{ staff_users|length }})
+        </h2>
+      </div>
+
+      {% if staff_users %}
+        <div class="mt-table-wrap">
+          <table class="mt-table">
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th>E-mail</th>
+                <th>Perfil</th>
+                <th>Criado em</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in staff_users %}
+                <tr>
+                  <td class="fw-semibold">{{ u.username }}</td>
+                  <td>{{ u.email }}</td>
+                  <td>
+                    {% if u.is_superuser %}
+                      <span class="mt-badge-global"><i class="bi bi-star-fill"></i> Superadmin</span>
+                    {% else %}
+                      <span class="mt-badge-global"><i class="bi bi-shield-check"></i> Staff</span>
+                    {% endif %}
+                  </td>
+                  <td class="mt-num text-secondary">{{ u.created_at_fmt }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-center py-5 text-secondary small">
+          Nenhuma conta Staff listada.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

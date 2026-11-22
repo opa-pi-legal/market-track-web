@@ -4,8 +4,32 @@
       --mt-primary: #14634e;
       --mt-primary-hover: #0f4e3d;
       --mt-text: #111827;
+      --mt-label: #1f2937;
       --mt-muted: #6b7280;
       --mt-border: #e5e7eb;
+      --mt-divider: #eef0f2;
+      --mt-input-bg: #ffffff;
+      --mt-social-bg: #ffffff;
+      --mt-social-hover: #f9fafb;
+      --mt-card-shadow: 0 18px 45px rgba(15, 23, 42, 0.05);
+      --mt-card-border: rgba(17, 24, 39, 0.04);
+    }
+
+    [data-theme="dark"] {
+      --mt-bg: #050b16;
+      --mt-surface: #0f1b2d;
+      --mt-primary: #15946d;
+      --mt-primary-hover: #107959;
+      --mt-text: #f1f5f9;
+      --mt-label: #cbd5e1;
+      --mt-muted: #94a3b8;
+      --mt-border: #24364f;
+      --mt-divider: #1e2f46;
+      --mt-input-bg: #0a1322;
+      --mt-social-bg: #132238;
+      --mt-social-hover: #1a2d49;
+      --mt-card-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      --mt-card-border: rgba(148, 163, 184, 0.14);
     }
 
     body {
@@ -15,11 +39,36 @@
       display: flex;
       flex-direction: column;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      transition: background-color 0.2s ease, color 0.2s ease;
     }
 
     /* Cabeçalho */
     .mt-header {
       padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .mt-theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      border: 1px solid var(--mt-border);
+      background: var(--mt-surface);
+      color: var(--mt-text);
+      border-radius: 999px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+    .mt-theme-toggle:hover {
+      border-color: var(--mt-primary);
+      color: var(--mt-primary);
     }
 
     .mt-brand {
@@ -58,8 +107,8 @@
       max-width: 920px;
       background: var(--mt-surface);
       border-radius: 18px;
-      border: 1px solid rgba(17, 24, 39, 0.04);
-      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.05);
+      border: 1px solid var(--mt-card-border);
+      box-shadow: var(--mt-card-shadow);
       padding: 2.5rem 2.75rem;
     }
 
@@ -79,7 +128,7 @@
     .form-label {
       font-size: 0.82rem;
       font-weight: 600;
-      color: #1f2937;
+      color: var(--mt-label);
       margin-bottom: 0.4rem;
     }
 
@@ -102,6 +151,7 @@
       height: 44px;
       border-radius: 8px;
       border: 1px solid var(--mt-border);
+      background-color: var(--mt-input-bg);
       padding-left: 2.5rem;
       padding-right: 2.5rem;
       font-size: 0.9rem;
@@ -114,6 +164,8 @@
     }
 
     .mt-input:focus {
+      background-color: var(--mt-input-bg);
+      color: var(--mt-text);
       border-color: var(--mt-primary);
     }
 
@@ -169,7 +221,7 @@
 
     /* Coluna direita (Social) */
     .mt-divider-col {
-      border-left: 1px solid #eef0f2;
+      border-left: 1px solid var(--mt-divider);
       padding-left: 2.5rem;
       display: flex;
       flex-direction: column;
@@ -180,7 +232,7 @@
       display: flex;
       align-items: center;
       text-align: center;
-      color: #9ca3af;
+      color: var(--mt-muted);
       font-size: 0.68rem;
       font-weight: 600;
       letter-spacing: 0.06em;
@@ -191,7 +243,7 @@
     .mt-or-divider::after {
       content: "";
       flex: 1;
-      border-bottom: 1px solid #eef0f2;
+      border-bottom: 1px solid var(--mt-divider);
     }
 
     .mt-or-divider::before {
@@ -206,8 +258,8 @@
       height: 44px;
       border: 1px solid var(--mt-border);
       border-radius: 8px;
-      background-color: #ffffff;
-      color: #1f2937;
+      background-color: var(--mt-social-bg);
+      color: var(--mt-text);
       font-size: 0.86rem;
       font-weight: 600;
       display: flex;
@@ -219,8 +271,9 @@
     }
 
     .mt-btn-social:hover {
-      background-color: #f9fafb;
-      border-color: #d1d5db;
+      background-color: var(--mt-social-hover);
+      border-color: var(--mt-primary);
+      color: var(--mt-text);
     }
 
     /* Rodapé */
