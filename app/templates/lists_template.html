@@ -1,0 +1,70 @@
+{% extends "base_app.html" %}
+{% block title %}Listas de compras — MercadoTracker{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <h1 class="mt-page-title">Listas de compras</h1>
+    <p class="mt-page-sub">Visualize e gerencie as listas compartilhadas pelos grupos.</p>
+  </div>
+
+  <form method="get" class="d-flex gap-2">
+    <input type="search" name="q" value="{{ q }}" placeholder="Buscar lista ou grupo..."
+           class="mt-input" style="min-width: 240px;" />
+    <button type="submit" class="mt-btn-primary">
+      <i class="bi bi-search"></i> Buscar
+    </button>
+  </form>
+</div>
+
+<div class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <h2 class="mt-card-title">
+      <i class="bi bi-card-checklist text-success"></i> Listas cadastradas ({{ shopping_lists|length }})
+    </h2>
+    {% if q %}
+      <a href="{% url 'lists' %}" class="mt-btn-outline py-1 px-3">Limpar filtro</a>
+    {% endif %}
+  </div>
+
+  {% if shopping_lists %}
+    <div class="mt-table-wrap">
+      <table class="mt-table">
+        <thead>
+          <tr>
+            <th>Lista</th>
+            <th>Grupo</th>
+            <th>Orçamento</th>
+            <th>Criada em</th>
+            <th>Status</th>
+            <th class="text-end">Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sl in shopping_lists %}
+            <tr>
+              <td>
+                <a href="{% url 'list_detail' sl.id %}" class="mt-table-link">{{ sl.name }}</a>
+              </td>
+              <td>{{ sl.group_name }}</td>
+              <td class="mt-num fw-semibold">{{ sl.budget_fmt }}</td>
+              <td class="mt-num text-secondary">{{ sl.created_at_fmt }}</td>
+              <td><span class="mt-badge-global text-uppercase">{{ sl.status }}</span></td>
+              <td class="text-end">
+                <a href="{% url 'list_detail' sl.id %}" class="mt-btn-outline py-1 px-3">
+                  Abrir <i class="bi bi-chevron-right"></i>
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="text-center py-5 text-secondary">
+      <i class="bi bi-card-checklist fs-1 d-block mb-2 opacity-50"></i>
+      Nenhuma lista de compras encontrada para os seus grupos.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

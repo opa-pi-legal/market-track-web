@@ -1,0 +1,126 @@
+{% extends "base_app.html" %}
+{% block title %}{{ shopping_list.name }} — Listas de compras{% endblock %}
+
+{% block content %}
+<a href="{% url 'lists' %}" class="mt-back-link">
+  <i class="bi bi-arrow-left"></i> Voltar para listas de compras
+</a>
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <h1 class="mt-page-title">{{ shopping_list.name }}</h1>
+    <p class="mt-page-sub">{{ participants|length }} participante{{ participants|length|pluralize:"s" }} · {{ items|length }} ite{{ items|length|pluralize:"m,ns" }}</p>
+  </div>
+
+  <form method="post" action="{% url 'list_delete' shopping_list.id %}"
+        data-mt-confirm="Tem certeza que deseja apagar esta lista permanentemente?"
+        data-mt-confirm-title="Apagar lista"
+        data-mt-confirm-btn="Apagar lista"
+        class="m-0">
+    {% csrf_token %}
+    <button type="submit" class="mt-btn-danger">
+      <i class="bi bi-trash3"></i> Apagar Lista
+    </button>
+  </form>
+</div>
+
+<!-- Resumo financeiro com barra de orçamento -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="mt-kpi-card accent">
+      <div class="mt-kpi-label"><span>Orçamento</span><i class="bi bi-wallet2"></i></div>
+      <div class="mt-kpi-value mt-num">{{ budget_fmt }}</div>
+      {% if has_budget %}
+        <div class="progress mt-2" style="height: 6px; background: rgba(255,255,255,0.2);">
+          <div class="progress-bar {% if budget_over %}bg-danger{% else %}bg-light{% endif %}" style="width: {{ budget_pct }}%"></div>
+        </div>
+        <div class="mt-kpi-sub mt-1 mt-num">{{ budget_pct }}% utilizado</div>
+      {% else %}
+        <div class="mt-kpi-sub">Sem teto definido</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label"><span>Estimado na lista</span><i class="bi bi-cart-check text-success"></i></div>
+      <div class="mt-kpi-value mt-num">{{ spent_fmt }}</div>
+      <div class="mt-kpi-sub">Soma dos itens ativos</div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label"><span>Economia projetada</span><i class="bi bi-piggy-bank text-success"></i></div>
+      <div class="mt-kpi-value mt-num">{{ economy_fmt }}</div>
+      <div class="mt-kpi-sub">Margem frente ao teto/referência</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Participantes -->
+  <div class="col-lg-5">
+    <div class="mt-surface-card h-100">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title"><i class="bi bi-people text-success"></i> Participantes ({{ participants|length }})</h2>
+      </div>
+      <div class="mt-scroll-col d-flex flex-column gap-2">
+        {% for p in participants %}
+          <div class="mt-list-row">
+            <div class="d-flex align-items-center gap-2 text-truncate">
+              <span class="fw-semibold text-truncate">{{ p.name }}</span>
+              {% if p.is_admin %}<span class="mt-badge-global">Admin</span>{% endif %}
+            </div>
+            <form method="post" action="{% url 'list_member_delete' shopping_list.id p.membership_id %}"
+                  data-mt-confirm="Remover {{ p.name }} do grupo?"
+                  data-mt-confirm-title="Remover participante"
+                  data-mt-confirm-btn="Remover"
+                  class="m-0">
+              {% csrf_token %}
+              <button type="submit" class="mt-btn-icon danger" title="Remover participante">
+                <i class="bi bi-trash3"></i>
+              </button>
+            </form>
+          </div>
+        {% empty %}
+          <div class="small text-secondary text-center py-4">Nenhum participante listado.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Produtos -->
+  <div class="col-lg-7">
+    <div class="mt-surface-card h-100">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title"><i class="bi bi-basket text-success"></i> Produtos da lista ({{ items|length }})</h2>
+      </div>
+      <div class="mt-scroll-col d-flex flex-column gap-2">
+        {% for it in items %}
+          <div class="mt-list-row">
+            <div class="text-truncate">
+              <div class="fw-semibold {% if it.checked %}text-decoration-line-through text-secondary{% endif %}">
+                <span class="mt-num">{{ it.qty_label }}x</span> {{ it.product_name }}
+              </div>
+              <div class="small text-secondary mt-num">{{ it.price_fmt }}</div>
+            </div>
+            <form method="post" action="{% url 'list_item_delete' shopping_list.id it.id %}"
+                  data-mt-confirm="Remover '{{ it.product_name }}' da lista?"
+                  data-mt-confirm-title="Remover item"
+                  data-mt-confirm-btn="Remover"
+                  class="m-0">
+              {% csrf_token %}
+              <button type="submit" class="mt-btn-icon danger" title="Remover produto">
+                <i class="bi bi-trash3"></i>
+              </button>
+            </form>
+          </div>
+        {% empty %}
+          <div class="small text-secondary text-center py-4">Nenhum produto nesta lista ainda.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
