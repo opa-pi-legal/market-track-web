@@ -8,8 +8,21 @@
 
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
   <div>
-    <h1 class="mt-page-title">{{ shopping_list.name }}</h1>
-    <p class="mt-page-sub">{{ participants|length }} participante{{ participants|length|pluralize:"s" }} · {{ items|length }} ite{{ items|length|pluralize:"m,ns" }}</p>
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+      <h1 class="mt-page-title mb-0">{{ shopping_list.name }}</h1>
+      <button type="button"
+              class="mt-badge-global border-0 mt-num"
+              data-mt-copy="{{ shopping_list.id }}"
+              title="Copiar ID da lista">
+        ID #{{ shopping_list.id }} <i class="bi bi-copy ms-1 small"></i>
+      </button>
+    </div>
+    <p class="mt-page-sub mb-0">
+      Dono: <strong>{{ owner_name }}</strong>{% if owner_email and owner_email != owner_name %} ({{ owner_email }}){% endif %}
+      · Grupo: <strong>{{ group_name }}</strong>
+      · {{ participants|length }} participante{{ participants|length|pluralize:"s" }}
+      · {{ items|length }} ite{{ items|length|pluralize:"m,ns" }}
+    </p>
   </div>
 
   <form method="post" action="{% url 'list_delete' shopping_list.id %}"
@@ -68,9 +81,14 @@
       <div class="mt-scroll-col d-flex flex-column gap-2">
         {% for p in participants %}
           <div class="mt-list-row">
-            <div class="d-flex align-items-center gap-2 text-truncate">
-              <span class="fw-semibold text-truncate">{{ p.name }}</span>
-              {% if p.is_admin %}<span class="mt-badge-global">Admin</span>{% endif %}
+            <div class="text-truncate">
+              <div class="d-flex align-items-center gap-2 text-truncate">
+                <span class="fw-semibold text-truncate">{{ p.name }}</span>
+                {% if p.is_admin %}<span class="mt-badge-global">Admin</span>{% endif %}
+              </div>
+              {% if p.email and p.email != p.name %}
+                <div class="small text-secondary text-truncate">{{ p.email }}</div>
+              {% endif %}
             </div>
             <form method="post" action="{% url 'list_member_delete' shopping_list.id p.membership_id %}"
                   data-mt-confirm="Remover {{ p.name }} do grupo?"

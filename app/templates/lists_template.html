@@ -4,13 +4,13 @@
 {% block content %}
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
   <div>
-    <h1 class="mt-page-title">Listas de compras</h1>
-    <p class="mt-page-sub">Visualize e gerencie as listas compartilhadas pelos grupos.</p>
+    <h1 class="mt-page-title">Listas de compras <span class="mt-badge-global align-middle ms-1">Visão Geral</span></h1>
+    <p class="mt-page-sub">Audite todas as listas cadastradas na plataforma por usuário, nome da lista, grupo ou ID.</p>
   </div>
 
-  <form method="get" class="d-flex gap-2">
-    <input type="search" name="q" value="{{ q }}" placeholder="Buscar lista ou grupo..."
-           class="mt-input" style="min-width: 240px;" />
+  <form method="get" class="d-flex flex-wrap gap-2">
+    <input type="search" name="q" value="{{ q }}" placeholder="Buscar por ID (#12), lista, usuário ou grupo..."
+           class="mt-input" style="min-width: 300px;" />
     <button type="submit" class="mt-btn-primary">
       <i class="bi bi-search"></i> Buscar
     </button>
@@ -20,7 +20,7 @@
 <div class="mt-surface-card">
   <div class="mt-card-header-row">
     <h2 class="mt-card-title">
-      <i class="bi bi-card-checklist text-success"></i> Listas cadastradas ({{ shopping_lists|length }})
+      <i class="bi bi-card-checklist text-success"></i> Todas as listas ({{ shopping_lists|length }})
     </h2>
     {% if q %}
       <a href="{% url 'lists' %}" class="mt-btn-outline py-1 px-3">Limpar filtro</a>
@@ -32,8 +32,11 @@
       <table class="mt-table">
         <thead>
           <tr>
+            <th>ID</th>
             <th>Lista</th>
+            <th>Usuário / Dono</th>
             <th>Grupo</th>
+            <th class="text-center">Itens</th>
             <th>Orçamento</th>
             <th>Criada em</th>
             <th>Status</th>
@@ -43,16 +46,37 @@
         <tbody>
           {% for sl in shopping_lists %}
             <tr>
+              <td class="mt-num">
+                <button type="button"
+                        class="btn btn-link p-0 text-decoration-none text-secondary fw-semibold mt-num"
+                        data-mt-copy="{{ sl.id }}"
+                        title="Copiar ID #{{ sl.id }}">
+                  #{{ sl.id }} <i class="bi bi-copy small opacity-75"></i>
+                </button>
+              </td>
               <td>
                 <a href="{% url 'list_detail' sl.id %}" class="mt-table-link">{{ sl.name }}</a>
               </td>
+              <td>
+                <div class="fw-semibold">{{ sl.owner_name }}</div>
+                {% if sl.owner_email %}
+                  <div class="small text-secondary">{{ sl.owner_email }}</div>
+                {% endif %}
+              </td>
               <td>{{ sl.group_name }}</td>
+              <td class="text-center mt-num">
+                {% if sl.items_count is not None %}
+                  <span class="mt-badge-global">{{ sl.items_count }}</span>
+                {% else %}
+                  <span class="text-secondary">—</span>
+                {% endif %}
+              </td>
               <td class="mt-num fw-semibold">{{ sl.budget_fmt }}</td>
               <td class="mt-num text-secondary">{{ sl.created_at_fmt }}</td>
               <td><span class="mt-badge-global text-uppercase">{{ sl.status }}</span></td>
               <td class="text-end">
                 <a href="{% url 'list_detail' sl.id %}" class="mt-btn-outline py-1 px-3">
-                  Abrir <i class="bi bi-chevron-right"></i>
+                  Validar <i class="bi bi-chevron-right"></i>
                 </a>
               </td>
             </tr>
@@ -63,7 +87,11 @@
   {% else %}
     <div class="text-center py-5 text-secondary">
       <i class="bi bi-card-checklist fs-1 d-block mb-2 opacity-50"></i>
-      Nenhuma lista de compras encontrada para os seus grupos.
+      {% if q %}
+        Nenhuma lista encontrada para "{{ q }}".
+      {% else %}
+        Nenhuma lista de compras cadastrada na plataforma até o momento.
+      {% endif %}
     </div>
   {% endif %}
 </div>

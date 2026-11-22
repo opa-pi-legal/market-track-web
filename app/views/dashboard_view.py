@@ -35,16 +35,8 @@ def _within_days(created_raw: str | None, cutoff: datetime | None) -> bool:
 
 def _collect_dashboard_data(token: str, period_days: int | None = 30) -> dict:
     users = services.get_users(token)
-    groups = services.get_groups(token)
-
-    all_lists: list[dict] = []
-    seen_list_ids: set = set()
-    for g in groups:
-        for sl in services.get_shopping_lists(token, group_id=g.get("id")):
-            lid = sl.get("id")
-            if lid not in seen_list_ids:
-                seen_list_ids.add(lid)
-                all_lists.append(sl)
+    groups = services.get_groups(token, all_groups=True)
+    all_lists = services.get_shopping_lists(token, all_groups=True)
 
     offers_all = services.get_community_offers(token, active_only=False)
     alerts_all = services.get_price_alerts(token, unread_only=False)
