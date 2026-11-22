@@ -1,0 +1,20 @@
+services:
+  market-track-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: market_track_web
+    restart: always
+    ports:
+      - "8010:8010"
+    env_file:
+      - .env
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - API_BASE_URL=${API_BASE_URL:-http://nginx-proxy}
+    networks:
+      - market-track-api_default
+
+networks:
+  market-track-api_default:
+    external: true
