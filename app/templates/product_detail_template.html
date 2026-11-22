@@ -1,0 +1,250 @@
+{% extends "base_app.html" %}
+{% block title %}{{ product.name }} — Produtos{% endblock %}
+
+{% block content %}
+<a href="{% url 'products' %}" class="mt-back-link">
+  <i class="bi bi-arrow-left"></i> Voltar para o catálogo de produtos
+</a>
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <h1 class="mt-page-title">{{ product.name }}</h1>
+      {% if product.is_global %}
+        <span class="mt-badge-global"><i class="bi bi-patch-check-fill"></i> Catálogo Global</span>
+      {% else %}
+        <span class="mt-badge-group">Produto de Grupo</span>
+      {% endif %}
+    </div>
+    <p class="mt-page-sub">{{ product.brand|default:"Marca não informada" }} · {{ product.category|default:"Geral" }} · ID #{{ product.id }}</p>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2">
+    {% if not product.is_global %}
+      <form method="post" action="{% url 'product_promote' product.id %}" class="m-0">
+        {% csrf_token %}
+        <button type="submit" class="mt-btn-primary">
+          <i class="bi bi-globe2"></i> Promover a Global
+        </button>
+      </form>
+    {% endif %}
+
+    <button type="button" class="mt-btn-outline" data-bs-toggle="modal" data-bs-target="#editProductModal">
+      <i class="bi bi-pencil-square"></i> Editar
+    </button>
+
+    <form method="post" action="{% url 'product_delete' product.id %}"
+          data-mt-confirm="Tem certeza que deseja apagar '{{ product.name }}'?"
+          data-mt-confirm-title="Apagar produto"
+          data-mt-confirm-btn="Apagar produto"
+          class="m-0">
+      {% csrf_token %}
+      <button type="submit" class="mt-btn-danger">
+        <i class="bi bi-trash3"></i> Apagar
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Coluna Esquerda: Foto + Metadados -->
+  <div class="col-lg-5 d-flex flex-column gap-3">
+    <div class="mt-surface-card text-center py-4">
+      {% if product.photo_url %}
+        <img src="{{ product.photo_url }}" alt="{{ product.name }}"
+             class="img-fluid rounded-3" style="max-height: 210px; object-fit: contain;" />
+      {% else %}
+        <div class="rounded-4 d-inline-flex align-items-center justify-content-center mb-3"
+             style="width: 88px; height: 88px; background: var(--mt-primary-soft); color: var(--mt-primary);">
+          <i class="bi bi-upc-scan" style="font-size: 2.3rem;"></i>
+        </div>
+        <div class="fw-semibold">{{ product.name }}</div>
+        <div class="small text-secondary mt-1">Sem imagem cadastrada</div>
+      {% endif %}
+    </div>
+
+    <div class="mt-surface-card">
+      <h2 class="mt-card-title mb-3"><i class="bi bi-info-circle text-success"></i> Ficha técnica</h2>
+      <div class="row g-3 small">
+        <div class="col-6">
+          <div class="text-secondary">Última cotação</div>
+          <div class="fw-bold fs-5 text-success mt-num">{{ latest_price_fmt }}</div>
+        </div>
+        <div class="col-6">
+          <div class="text-secondary">Status</div>
+          <div class="fw-semibold">{{ status_label }}</div>
+        </div>
+        <div class="col-6">
+          <div class="text-secondary">Código EAN</div>
+          <div class="fw-semibold mt-num d-flex align-items-center gap-1">
+            <span>{{ product.barcode|default:"—" }}</span>
+            {% if product.barcode %}
+              <button type="button" class="mt-btn-icon" data-mt-copy="{{ product.barcode }}" title="Copiar EAN">
+                <i class="bi bi-copy"></i>
+              </button>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="text-secondary">Categoria</div>
+          <div class="fw-semibold">{{ product.category|default:"Geral" }}</div>
+        </div>
+        <div class="col-6">
+          <div class="text-secondary">Criado em</div>
+          <div class="fw-semibold mt-num">{{ created_at_fmt }}</div>
+        </div>
+        <div class="col-6">
+          <div class="text-secondary">Atualizado em</div>
+          <div class="fw-semibold mt-num">{{ updated_at_fmt }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Coluna Direita: Gráfico de evolução + Histórico -->
+  <div class="col-lg-7 d-flex flex-column gap-3">
+    <div class="mt-surface-card">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title"><i class="bi bi-graph-down-arrow text-success"></i> Evolução de preços na comunidade</h2>
+      </div>
+      {% if price_history %}
+        <div class="mt-chart-canvas-box" style="height: 220px;">
+          <canvas id="productPriceChart"></canvas>
+        </div>
+      {% else %}
+        <div class="text-center py-4 small text-secondary">
+          Ainda não há pontos suficientes para montar o gráfico de evolução.
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="mt-surface-card">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title"><i class="bi bi-clock-history text-success"></i> Histórico de cotações ({{ price_history|length }})</h2>
+      </div>
+      {% if price_history %}
+        <div class="d-flex flex-column gap-2 mt-scroll-col" style="max-height: 260px;">
+          {% for ph in price_history %}
+            <div class="mt-list-row">
+              <div>
+                <div class="fw-semibold">{{ ph.market_name }}</div>
+                <div class="small text-secondary mt-num">{{ ph.date_fmt }}</div>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                {% if ph.discount_percent > 0 %}
+                  <span class="mt-badge-global mt-num">-{{ ph.discount_percent }}%</span>
+                {% endif %}
+                <span class="fw-bold mt-num">{{ ph.price_fmt }}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="small text-secondary text-center py-3">
+          Nenhuma cotação comunitária registrada para este produto ainda.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Modal Editar Produto -->
+<div class="modal fade" id="editProductModal" tabindex="-1" aria-labelledby="editProductModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="editProductModalLabel">Editar Produto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form method="post" action="{% url 'product_edit' product.id %}">
+        {% csrf_token %}
+        <div class="modal-body d-flex flex-column gap-3">
+          <div>
+            <label class="form-label small fw-semibold">Nome do produto</label>
+            <input type="text" name="name" value="{{ product.name }}" required class="form-control" />
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Marca</label>
+              <input type="text" name="brand" value="{{ product.brand|default:'' }}" class="form-control" />
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Categoria</label>
+              <input type="text" name="category" value="{{ product.category|default:'Geral' }}" class="form-control" />
+            </div>
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Código de barras (EAN)</label>
+              <input type="text" name="barcode" value="{{ product.barcode|default:'' }}" class="form-control" />
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Status</label>
+              <select name="status" class="form-select">
+                <option value="active" {% if product.status != 'archived' %}selected{% endif %}>Ativo</option>
+                <option value="archived" {% if product.status == 'archived' %}selected{% endif %}>Arquivado</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="form-label small fw-semibold">URL da imagem (opcional)</label>
+            <input type="url" name="photo_url" value="{{ product.photo_url|default:'' }}" class="form-control" placeholder="https://..." />
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="mt-btn-outline" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="mt-btn-primary">Salvar alterações</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const chartData = {{ price_chart_json|safe }};
+    const canvas = document.getElementById("productPriceChart");
+    if (!canvas || !chartData.values.length) return;
+    let instance = null;
+
+    function render() {
+      if (instance) instance.destroy();
+      const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      const text = isDark ? "#cbd5e1" : "#334155";
+      const grid = isDark ? "rgba(148, 163, 184, 0.14)" : "rgba(15, 23, 42, 0.08)";
+      const line = isDark ? "#16a078" : "#14634e";
+
+      instance = new Chart(canvas, {
+        type: "line",
+        data: {
+          labels: chartData.labels,
+          datasets: [{
+            label: "Preço (R$)",
+            data: chartData.values,
+            borderColor: line,
+            backgroundColor: isDark ? "rgba(22, 160, 120, 0.18)" : "rgba(20, 99, 78, 0.12)",
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: line,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: text, font: { size: 11 } }, grid: { display: false } },
+            y: { beginAtZero: false, ticks: { color: text, font: { size: 11 } }, grid: { color: grid } },
+          },
+        },
+      });
+    }
+
+    render();
+    window.addEventListener("mt-theme-change", render);
+  })();
+</script>
+{% endblock %}

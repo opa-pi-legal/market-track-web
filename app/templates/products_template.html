@@ -1,0 +1,161 @@
+{% extends "base_app.html" %}
+{% block title %}Produtos — MercadoTracker{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <h1 class="mt-page-title">Catálogo de Produtos</h1>
+    <p class="mt-page-sub">Gerencie itens do Catálogo Global e produtos criados por grupos.</p>
+  </div>
+
+  <button type="button" class="mt-btn-primary" data-bs-toggle="modal" data-bs-target="#newProductModal">
+    <i class="bi bi-plus-lg"></i> Novo Produto Global
+  </button>
+</div>
+
+<!-- Barra de filtros -->
+<div class="mt-surface-card mb-3 py-3">
+  <form method="get" class="row g-2 align-items-center">
+    <div class="col-md-5">
+      <input type="search" name="q" value="{{ q }}" placeholder="Buscar por nome, marca ou código EAN..."
+             class="mt-input" />
+    </div>
+
+    <div class="col-sm-6 col-md-3">
+      <select name="category" class="mt-input" onchange="this.form.submit()">
+        <option value="">Todas as categorias</option>
+        {% for cat in categories %}
+          <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-sm-6 col-md-2">
+      <select name="origin" class="mt-input" onchange="this.form.submit()">
+        <option value="all" {% if origin == 'all' %}selected{% endif %}>Todas origens</option>
+        <option value="global" {% if origin == 'global' %}selected{% endif %}>Catálogo Global</option>
+        <option value="group" {% if origin == 'group' %}selected{% endif %}>Criados em Grupos</option>
+      </select>
+    </div>
+
+    <div class="col-md-2 d-flex gap-2">
+      <button type="submit" class="mt-btn-primary w-100">
+        <i class="bi bi-search"></i> Filtrar
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Tabela de Produtos -->
+<div class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <h2 class="mt-card-title">
+      <i class="bi bi-box-seam text-success"></i> Produtos encontrados ({{ products|length }})
+    </h2>
+    {% if q or selected_category or origin != 'all' %}
+      <a href="{% url 'products' %}" class="mt-btn-outline py-1 px-3">Limpar filtros</a>
+    {% endif %}
+  </div>
+
+  {% if products %}
+    <div class="mt-table-wrap">
+      <table class="mt-table">
+        <thead>
+          <tr>
+            <th>Produto</th>
+            <th>Categoria</th>
+            <th>Código EAN</th>
+            <th>Origem</th>
+            <th class="text-end">Menor oferta</th>
+            <th class="text-end">Detalhes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+            <tr>
+              <td>
+                <a href="{% url 'product_detail' p.id %}" class="mt-table-link d-block">{{ p.name }}</a>
+                {% if p.brand %}<span class="small text-secondary">{{ p.brand }}</span>{% endif %}
+              </td>
+              <td><span class="mt-badge-group">{{ p.category }}</span></td>
+              <td class="mt-num">
+                {% if p.barcode %}
+                  <span class="me-1">{{ p.barcode }}</span>
+                  <button type="button" class="mt-btn-icon" data-mt-copy="{{ p.barcode }}" title="Copiar EAN">
+                    <i class="bi bi-copy"></i>
+                  </button>
+                {% else %}
+                  <span class="text-secondary small">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if p.is_global %}
+                  <span class="mt-badge-global"><i class="bi bi-patch-check-fill"></i> Global</span>
+                {% else %}
+                  <span class="mt-badge-group">Grupo</span>
+                {% endif %}
+              </td>
+              <td class="text-end mt-num fw-bold {% if p.has_price %}text-success{% else %}text-secondary fw-normal small{% endif %}">
+                {{ p.price_fmt }}
+              </td>
+              <td class="text-end">
+                <a href="{% url 'product_detail' p.id %}" class="mt-btn-outline py-1 px-3">
+                  Abrir <i class="bi bi-chevron-right"></i>
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="text-center py-5 text-secondary">
+      <i class="bi bi-box-seam fs-1 d-block mb-2 opacity-50"></i>
+      Nenhum produto encontrado com os filtros atuais.
+    </div>
+  {% endif %}
+</div>
+
+<!-- Modal Novo Produto Global -->
+<div class="modal fade" id="newProductModal" tabindex="-1" aria-labelledby="newProductModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="newProductModalLabel">Novo Produto Global</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form method="post" action="{% url 'product_create' %}">
+        {% csrf_token %}
+        <div class="modal-body d-flex flex-column gap-3">
+          <div>
+            <label class="form-label small fw-semibold">Nome do produto *</label>
+            <input type="text" name="name" required class="form-control" placeholder="Ex.: Arroz Camil Tipo 1 5kg" />
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Marca</label>
+              <input type="text" name="brand" class="form-control" placeholder="Ex.: Camil" />
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Categoria</label>
+              <input type="text" name="category" value="Mercearia" class="form-control" />
+            </div>
+          </div>
+          <div>
+            <label class="form-label small fw-semibold">Código de barras (EAN)</label>
+            <input type="text" name="barcode" class="form-control" placeholder="789..." />
+          </div>
+          <div>
+            <label class="form-label small fw-semibold">URL da imagem (opcional)</label>
+            <input type="url" name="photo_url" class="form-control" placeholder="https://..." />
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="mt-btn-outline" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="mt-btn-primary">Criar no Catálogo Global</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
