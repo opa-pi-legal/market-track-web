@@ -1,0 +1,302 @@
+{% extends "base_app.html" %}
+{% block title %}Moderação — MercadoTracker{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+  <div>
+    <h1 class="mt-page-title">Moderação &amp; Curadoria</h1>
+    <p class="mt-page-sub">Controle de qualidade das ofertas comunitárias, catálogo global e coordenadas GPS.</p>
+  </div>
+  <span class="mt-badge-global py-2 px-3">
+    <i class="bi bi-shield-check"></i> Sessão Staff Ativa
+  </span>
+</div>
+
+<!-- Sub-abas com contadores -->
+<div class="mt-tabs" role="tablist">
+  <a href="?tab=offers" class="mt-tab-link {% if active_tab == 'offers' %}active{% endif %}">
+    <i class="bi bi-flag"></i>
+    <span>Ofertas denunciadas</span>
+    <span class="mt-tab-count mt-num">{{ flagged_offers|length }}</span>
+  </a>
+  <a href="?tab=catalog" class="mt-tab-link {% if active_tab == 'catalog' %}active{% endif %}">
+    <i class="bi bi-upc-scan"></i>
+    <span>Curadoria Global</span>
+    <span class="mt-tab-count mt-num">{{ pending_global_products|length }}</span>
+  </a>
+  <a href="?tab=markets" class="mt-tab-link {% if active_tab == 'markets' %}active{% endif %}">
+    <i class="bi bi-geo-alt"></i>
+    <span>Saneamento de Mercados</span>
+    <span class="mt-tab-count mt-num">{{ missing_geo_count }} sem GPS</span>
+  </a>
+  <a href="?tab=banned" class="mt-tab-link {% if active_tab == 'banned' %}active{% endif %}">
+    <i class="bi bi-person-x"></i>
+    <span>Contas Restritas</span>
+    <span class="mt-tab-count mt-num">{{ banned_users|length }}</span>
+  </a>
+</div>
+
+{% if active_tab == 'offers' %}
+<section class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <h2 class="mt-card-title"><i class="bi bi-flag-fill text-warning"></i> Ofertas em quarentena ou denunciadas</h2>
+  </div>
+
+  {% if flagged_offers %}
+    <div class="d-flex flex-column gap-3">
+      {% for off in flagged_offers %}
+        <div class="mt-list-row">
+          <div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <span class="fw-bold">{{ off.product_name }}</span>
+              {% if off.market_name %}<span class="mt-badge-group">{{ off.market_name }}</span>{% endif %}
+              {% if off.deviation_label %}<span class="mt-badge-risk mt-num">{{ off.deviation_label }}</span>{% endif %}
+              {% if off.abuse_reports_count %}<span class="mt-badge-warn mt-num">{{ off.abuse_reports_count }} denúncia{{ off.abuse_reports_count|pluralize:"s" }}</span>{% endif %}
+            </div>
+            <div class="small text-secondary mt-1 mt-num">
+              Informado: <strong class="text-body">{{ off.current_price_fmt }}</strong>
+              · Média ref.: {{ off.original_price_fmt }}
+              · Autor: {{ off.reported_by_name }}
+            </div>
+          </div>
+
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <form method="post" action="{% url 'moderation_offer_action' off.id %}" class="m-0">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="approve" />
+              <button type="submit" class="mt-btn-primary py-1 px-3">
+                <i class="bi bi-check-circle"></i> Restaurar
+              </button>
+            </form>
+
+            <form method="post" action="{% url 'moderation_offer_action' off.id %}"
+                  data-mt-confirm="Remover definitivamente a oferta '{{ off.product_name }}'?"
+                  data-mt-confirm-title="Remover oferta"
+                  data-mt-confirm-btn="Remover"
+                  class="m-0">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="remove" />
+              <button type="submit" class="mt-btn-danger-soft">
+                <i class="bi bi-trash3"></i> Remover
+              </button>
+            </form>
+
+            <form method="post" action="{% url 'moderation_offer_action' off.id %}"
+                  data-mt-confirm="Remover a oferta e banir o autor da comunidade global?"
+                  data-mt-confirm-title="Banir autor"
+                  data-mt-confirm-btn="Banir autor"
+                  class="m-0">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="ban_author" />
+              <button type="submit" class="mt-btn-danger py-1 px-3">
+                <i class="bi bi-slash-circle"></i> Banir Autor
+              </button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="text-center py-5 text-secondary">
+      <i class="bi bi-shield-check fs-1 d-block mb-2 text-success opacity-75"></i>
+      Nenhuma oferta em quarentena ou denunciada no momento.
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if active_tab == 'catalog' %}
+<section class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <h2 class="mt-card-title"><i class="bi bi-upc-scan text-success"></i> Produtos criados por grupos (prontos para curadoria)</h2>
+  </div>
+
+  {% if pending_global_products %}
+    <div class="d-flex flex-column gap-2">
+      {% for prod in pending_global_products %}
+        <div class="mt-list-row">
+          <div>
+            <div class="fw-bold">{{ prod.name }}</div>
+            <div class="small text-secondary mt-num">
+              {{ prod.category }} · EAN: <strong>{{ prod.barcode|default:"Sem código" }}</strong>
+              {% if prod.group_id %} · Grupo #{{ prod.group_id }}{% endif %}
+            </div>
+          </div>
+
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <form method="post" action="{% url 'moderation_product_action' prod.id %}" class="m-0">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="promote" />
+              <button type="submit" class="mt-btn-primary py-1 px-3">
+                <i class="bi bi-globe2"></i> Promover a Global
+              </button>
+            </form>
+
+            <form method="post" action="{% url 'moderation_product_action' prod.id %}"
+                  data-mt-confirm="Recusar e apagar o produto '{{ prod.name }}'?"
+                  data-mt-confirm-title="Recusar produto"
+                  data-mt-confirm-btn="Recusar"
+                  class="m-0">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="reject" />
+              <button type="submit" class="mt-btn-danger-soft">
+                <i class="bi bi-x-circle"></i> Recusar
+              </button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="text-center py-5 text-secondary">
+      <i class="bi bi-patch-check fs-1 d-block mb-2 text-success opacity-75"></i>
+      Todos os produtos já estão consolidados no Catálogo Global.
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if active_tab == 'markets' %}
+<section class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <h2 class="mt-card-title"><i class="bi bi-geo-alt-fill text-success"></i> Saneamento de Mercados ({{ markets|length }})</h2>
+    <span class="small text-secondary">Use "Buscar GPS" para preencher coordenadas via OpenStreetMap.</span>
+  </div>
+
+  {% if markets %}
+    <div class="d-flex flex-column gap-3">
+      {% for m in markets %}
+        <form method="post" action="{% url 'moderation_market_geo' m.id %}" class="mt-list-row m-0 d-block" data-market-geo-form data-market-name="{{ m.name }}">
+          {% csrf_token %}
+          <div class="row g-2 align-items-center">
+            <div class="col-lg-3">
+              <div class="fw-bold">{{ m.name }}</div>
+              <div class="small mt-1 d-flex align-items-center gap-2">
+                {% if m.missing_geo %}
+                  <span class="mt-badge-warn">Sem GPS</span>
+                {% else %}
+                  <span class="mt-badge-global">GPS OK</span>
+                {% endif %}
+                <span class="text-secondary mt-num">{{ m.created_at_fmt }}</span>
+              </div>
+            </div>
+
+            <div class="col-sm-4 col-lg-2">
+              <input type="text" name="city" value="{{ m.city }}" placeholder="Cidade"
+                     class="mt-input" aria-label="Cidade de {{ m.name }}" />
+            </div>
+
+            <div class="col-sm-4 col-lg-2">
+              <input type="text" name="latitude" value="{{ m.latitude }}" placeholder="Latitude"
+                     class="mt-input mt-num" aria-label="Latitude de {{ m.name }}" />
+            </div>
+
+            <div class="col-sm-4 col-lg-2">
+              <input type="text" name="longitude" value="{{ m.longitude }}" placeholder="Longitude"
+                     class="mt-input mt-num" aria-label="Longitude de {{ m.name }}" />
+            </div>
+
+            <div class="col-lg-3 d-flex gap-2 justify-content-lg-end">
+              <button type="button" class="mt-btn-outline py-1 px-2 flex-grow-1 flex-lg-grow-0" data-geo-lookup title="Buscar coordenadas automaticamente">
+                <i class="bi bi-crosshair"></i> Buscar GPS
+              </button>
+              <button type="submit" class="mt-btn-primary py-1 px-3 flex-grow-1 flex-lg-grow-0">
+                <i class="bi bi-check2"></i> Salvar
+              </button>
+            </div>
+          </div>
+          <div class="small text-secondary mt-1 d-none" data-geo-feedback></div>
+        </form>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="text-center py-5 text-secondary">
+      Nenhum mercado encontrado para saneamento.
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if active_tab == 'banned' %}
+<section class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <h2 class="mt-card-title"><i class="bi bi-person-x-fill text-danger"></i> Contas Restritas na Comunidade ({{ banned_users|length }})</h2>
+  </div>
+
+  {% if banned_users %}
+    <div class="d-flex flex-column gap-2">
+      {% for u in banned_users %}
+        <div class="mt-list-row">
+          <div>
+            <div class="fw-bold">{{ u.name|default:u.username }}</div>
+            <div class="small text-secondary">{{ u.email|default:"—" }}</div>
+          </div>
+          <span class="mt-badge-risk">Bloqueado na Comunidade</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="text-center py-5 text-secondary">
+      <i class="bi bi-emoji-smile fs-1 d-block mb-2 text-success opacity-75"></i>
+      Nenhuma conta restrita no momento.
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    document.querySelectorAll("[data-geo-lookup]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const form = btn.closest("[data-market-geo-form]");
+        if (!form) return;
+        const name = form.getAttribute("data-market-name") || "";
+        const cityInput = form.querySelector('input[name="city"]');
+        const latInput = form.querySelector('input[name="latitude"]');
+        const lngInput = form.querySelector('input[name="longitude"]');
+        const feedback = form.querySelector("[data-geo-feedback]");
+
+        const query = [name, cityInput ? cityInput.value.trim() : "", "Brasil"].filter(Boolean).join(", ");
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Buscando...';
+        if (feedback) {
+          feedback.classList.add("d-none");
+          feedback.textContent = "";
+        }
+
+        try {
+          const url = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=" + encodeURIComponent(query);
+          const resp = await fetch(url, { headers: { Accept: "application/json" } });
+          const results = await resp.json();
+          if (Array.isArray(results) && results.length > 0) {
+            const hit = results[0];
+            if (latInput) latInput.value = Number(hit.lat).toFixed(6);
+            if (lngInput) lngInput.value = Number(hit.lon).toFixed(6);
+            if (cityInput && !cityInput.value.trim() && hit.address) {
+              cityInput.value = hit.address.city || hit.address.town || hit.address.municipality || "";
+            }
+            if (feedback) {
+              feedback.textContent = "Encontrado: " + (hit.display_name || "").slice(0, 95) + " — clique em Salvar para confirmar.";
+              feedback.classList.remove("d-none");
+            }
+          } else if (feedback) {
+            feedback.textContent = "Nenhuma coordenada encontrada para '" + query + "'. Informe a cidade e tente novamente.";
+            feedback.classList.remove("d-none");
+          }
+        } catch (_) {
+          if (feedback) {
+            feedback.textContent = "Falha ao consultar OpenStreetMap. Preencha manualmente ou tente novamente.";
+            feedback.classList.remove("d-none");
+          }
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}
