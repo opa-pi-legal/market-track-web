@@ -1,0 +1,239 @@
+{% extends "base_app.html" %}
+{% block title %}Manutenção — MercadoTracker{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <h1 class="mt-page-title">Manutenção &amp; Mensageria</h1>
+    <p class="mt-page-sub">Monitoramento ao vivo dos microsserviços e simulador de eventos RabbitMQ.</p>
+  </div>
+  <span class="mt-badge-group py-2 px-3 mt-num">
+    <i class="bi bi-hdd-network text-success"></i> Gateway: {{ api_base_url }}
+  </span>
+</div>
+
+<!-- Painel 1: Saúde dos Microsserviços (Refresh via AJAX) -->
+<section class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <h2 class="mt-card-title">
+      <i class="bi bi-heart-pulse-fill text-success"></i> Saúde dos Microsserviços
+    </h2>
+    <div class="d-flex align-items-center gap-2">
+      <span class="small text-secondary mt-num" id="healthCheckedAt">Atualizado às {{ checked_at }}</span>
+      <button type="button" id="refreshHealthBtn" data-health-url="{% url 'maintenance_health_json' %}" class="mt-btn-outline py-1 px-3">
+        <i class="bi bi-arrow-clockwise"></i> Atualizar agora
+      </button>
+    </div>
+  </div>
+
+  <div class="row g-3" id="healthCardsGrid">
+    {% for svc in health_checks %}
+      <div class="col-md-4">
+        <div class="mt-list-row d-flex flex-column align-items-stretch gap-3 h-100 p-3">
+          <div class="d-flex align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2 fw-bold">
+              <span class="mt-live-dot {% if not svc.ok %}down{% endif %}"></span>
+              <span>{{ svc.name }}</span>
+            </div>
+            {% if svc.ok %}
+              <span class="mt-badge-global">Online</span>
+            {% else %}
+              <span class="mt-badge-risk">Offline</span>
+            {% endif %}
+          </div>
+
+          <div class="small text-secondary">
+            <div>Endpoint: <code>{{ svc.endpoint }}</code></div>
+            <div class="mt-num mt-1">Status: <strong class="text-body">{{ svc.detail }}</strong> · Latência: <strong class="text-body">{{ svc.latency_ms }} ms</strong></div>
+          </div>
+
+          <div class="mt-auto">
+            {% if svc.name == "Core API" %}
+              <a href="{{ api_base_url }}/core-api/docs/" target="_blank" rel="noopener" class="mt-btn-outline w-100 py-1">
+                <i class="bi bi-file-earmark-code"></i> Abrir docs
+              </a>
+            {% elif svc.name == "Market API" %}
+              <a href="{{ api_base_url }}/market-api/docs/" target="_blank" rel="noopener" class="mt-btn-outline w-100 py-1">
+                <i class="bi bi-file-earmark-code"></i> Abrir docs
+              </a>
+            {% else %}
+              <a href="{{ api_base_url }}/product-api/docs/" target="_blank" rel="noopener" class="mt-btn-outline w-100 py-1">
+                <i class="bi bi-file-earmark-code"></i> Abrir docs
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Painel 2: Simulador ofertas comunitárias -->
+<section class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <div>
+      <h2 class="mt-card-title">
+        <i class="bi bi-broadcast-pin text-success"></i> Simulador ofertas comunitárias
+      </h2>
+      <p class="small text-secondary mb-0 mt-1">
+        Publica uma oferta real e envia notificação para o aplicativo móvel via mensageria.
+      </p>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <button type="button" class="mt-preset-btn"
+            data-sim-preset='{"product_name":"Café Pilão Tradicional 500g","market_name":"Atacadão","price":"15,90","city":"São Paulo","ean":"7896089011357"}'>
+      <i class="bi bi-tag text-success"></i> Oferta Normal
+    </button>
+    <button type="button" class="mt-preset-btn"
+            data-sim-preset='{"product_name":"Café Pilão Tradicional 500g","market_name":"Assaí Atacadista","price":"11,90","city":"São Paulo","ean":"7896089011357"}'>
+      <i class="bi bi-bell-fill text-warning"></i> Queda Brusca (Dispara Alerta)
+    </button>
+    <button type="button" class="mt-preset-btn"
+            data-sim-preset='{"product_name":"Azeite Extra Virgem Gallo 500ml","market_name":"Carrefour","price":"1,99","city":"São Paulo","ean":"5601031001012"}'>
+      <i class="bi bi-shield-exclamation text-danger"></i> Preço Suspeito (Testa Quarentena)
+    </button>
+  </div>
+
+  <form method="post" action="{% url 'maintenance_simulate_offer' %}" id="simOfferForm">
+    {% csrf_token %}
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold mb-1">Produto</label>
+        <input type="text" name="product_name" value="Café Pilão Tradicional 500g" required class="mt-input" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold mb-1">Mercado</label>
+        <input type="text" name="market_name" value="Atacadão" required class="mt-input" />
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small fw-semibold mb-1">Preço (R$)</label>
+        <input type="text" name="price" value="12,90" required class="mt-input mt-num" />
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold mb-1">Cidade</label>
+        <input type="text" name="city" value="São Paulo" class="mt-input" />
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold mb-1">EAN (opcional)</label>
+        <input type="text" name="ean" placeholder="7896089011357" class="mt-input mt-num" />
+      </div>
+      <div class="col-md-8 text-md-end">
+        <button type="submit" class="mt-btn-primary px-4">
+          <i class="bi bi-send-fill"></i> Disparar Oferta
+        </button>
+      </div>
+    </div>
+  </form>
+</section>
+
+<!-- Painel 3: Registro de Atividades -->
+<section class="mt-surface-card">
+  <div class="mt-card-header-row">
+    <h2 class="mt-card-title">
+      <i class="bi bi-journal-text text-success"></i> Registro de Atividades Recentes ({{ logs|length }})
+    </h2>
+  </div>
+
+  {% if logs %}
+    <div class="d-flex flex-column gap-2">
+      {% for log in logs %}
+        <div class="mt-list-row py-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="mt-badge-global">{{ log.action }}</span>
+            <span class="small">{{ log.description }}</span>
+          </div>
+          <span class="small text-secondary mt-num">{{ log.created_at_fmt }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="text-center py-4 small text-secondary">
+      Nenhum registro de atividade encontrado para o grupo ativo.
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    // 1. Presets 1-clique no simulador RabbitMQ
+    const form = document.getElementById("simOfferForm");
+    document.querySelectorAll("[data-sim-preset]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (!form) return;
+        try {
+          const preset = JSON.parse(btn.getAttribute("data-sim-preset") || "{}");
+          Object.keys(preset).forEach(function (k) {
+            const input = form.querySelector('[name="' + k + '"]');
+            if (input) input.value = preset[k];
+          });
+        } catch (_) {}
+      });
+    });
+
+    // 2. Atualização ao vivo do status dos microsserviços sem reload
+    const refreshBtn = document.getElementById("refreshHealthBtn");
+    const grid = document.getElementById("healthCardsGrid");
+    const tsEl = document.getElementById("healthCheckedAt");
+    const apiBase = "{{ api_base_url|escapejs }}";
+
+    if (refreshBtn && grid) {
+      refreshBtn.addEventListener("click", async function () {
+        const url = refreshBtn.getAttribute("data-health-url");
+        if (!url) return;
+        const origHtml = refreshBtn.innerHTML;
+        refreshBtn.disabled = true;
+        refreshBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Verificando...';
+
+        try {
+          const resp = await fetch(url, { credentials: "same-origin" });
+          const data = await resp.json();
+          if (resp.ok && Array.isArray(data.health_checks)) {
+            if (tsEl && data.checked_at) tsEl.textContent = "Atualizado às " + data.checked_at;
+            const docsMap = {
+              "Core API": apiBase + "/core-api/docs/",
+              "Market API": apiBase + "/market-api/docs/",
+              "Product API": apiBase + "/product-api/docs/",
+            };
+            grid.innerHTML = data.health_checks.map(function (svc) {
+              const dotCls = svc.ok ? "" : "down";
+              const badge = svc.ok
+                ? '<span class="mt-badge-global">Online</span>'
+                : '<span class="mt-badge-risk">Offline</span>';
+              const docsUrl = docsMap[svc.name] || (apiBase + "/core-api/docs/");
+              return `
+                <div class="col-md-4">
+                  <div class="mt-list-row d-flex flex-column align-items-stretch gap-3 h-100 p-3">
+                    <div class="d-flex align-items-center justify-content-between gap-2">
+                      <div class="d-flex align-items-center gap-2 fw-bold">
+                        <span class="mt-live-dot ${dotCls}"></span>
+                        <span>${svc.name}</span>
+                      </div>
+                      ${badge}
+                    </div>
+                    <div class="small text-secondary">
+                      <div>Endpoint: <code>${svc.endpoint}</code></div>
+                      <div class="mt-num mt-1">Status: <strong class="text-body">${svc.detail}</strong> · Latência: <strong class="text-body">${svc.latency_ms} ms</strong></div>
+                    </div>
+                    <div class="mt-auto">
+                      <a href="${docsUrl}" target="_blank" rel="noopener" class="mt-btn-outline w-100 py-1">
+                        <i class="bi bi-file-earmark-code"></i> Abrir docs
+                      </a>
+                    </div>
+                  </div>
+                </div>`;
+            }).join("");
+          }
+        } catch (_) {
+        } finally {
+          refreshBtn.disabled = false;
+          refreshBtn.innerHTML = origHtml;
+        }
+      });
+    }
+  })();
+</script>
+{% endblock %}
