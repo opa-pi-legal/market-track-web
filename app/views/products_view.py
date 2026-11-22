@@ -105,12 +105,16 @@ class product_create_view(View):
         if not token:
             return redirect(r("login"))
 
+        next_url = (request.POST.get("next") or "").strip()
+        target_redirect = next_url if next_url.startswith("/") else r("products")
+
         name = (request.POST.get("name") or "").strip()
         if not name:
             messages.error(request, "Informe o nome do produto.")
-            return redirect(r("products"))
+            return redirect(target_redirect)
 
         payload = {
+            "group_id": "global",
             "name": name,
             "brand": (request.POST.get("brand") or "").strip() or None,
             "category": (request.POST.get("category") or "Geral").strip(),
@@ -135,7 +139,7 @@ class product_create_view(View):
         except services.APIError as exc:
             messages.error(request, f"Não foi possível criar o produto: {exc}")
 
-        return redirect(r("products"))
+        return redirect(target_redirect)
 
 
 class product_detail_view(View):
