@@ -11,25 +11,61 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 from pathlib import Path
-import environ
 import os
+
+try:
+    import environ
+except ImportError:
+    environ = None
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-env = environ.Env(
-    DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, ['127.0.0.1', 'localhost']),
-)
-environ.Env.read_env(BASE_DIR / ".env")
+if environ is not None:
+    env = environ.Env(
+        DEBUG=(bool, True),
+        ALLOWED_HOSTS=(list, ['127.0.0.1', 'localhost']),
+    )
+    env_file = BASE_DIR / ".env"
+    if env_file.exists():
+        environ.Env.read_env(env_file)
+    SECRET_KEY = env("DJANGO_SECRET_KEY", default="dev-insecure-market-track-web-key")
+    DEBUG = env("DEBUG")
+    ALLOWED_HOSTS = [
+        h.strip() for h in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
+        if h.strip()
+    ]
+else:
+    SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-insecure-local-only-key")
+    DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
+    ALLOWED_HOSTS = [
+        h.strip() for h in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
+        if h.strip()
+    ]
 
-SECRET_KEY = env("DJANGO_SECRET_KEY")
-DEBUG = env("DEBUG")
-ALLOWED_HOSTS = ALLOWED_HOSTS = [
-    h.strip() for h in os.getenv('ALLOWED_HOSTS', '').split(',')
-    if h.strip()   
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        "http://127.0.0.1:8000,http://localhost:8000",
+    ).split(",")
+    if o.strip()
 ]
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:90")
+
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8090")
+PUBLIC_API_BASE_URL = os.getenv("PUBLIC_API_BASE_URL", API_BASE_URL)
+
+# Whitelist opcional de e-mails configurada exclusivamente via .env
+ALLOWED_WEB_EMAILS = {
+    e.strip().lower()
+    for e in os.getenv("ALLOWED_WEB_EMAILS", "").split(",")
+    if e.strip()
+}
+
+# Firebase Auth Web (configurado exclusivamente via .env)
+FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY", "")
+FIREBASE_AUTH_DOMAIN = os.getenv("FIREBASE_AUTH_DOMAIN", "")
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
 
 # Application definition
 
@@ -53,6 +89,12 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+try:
+    import whitenoise  # noqa: F401
+    MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+except ImportError:
+    pass
+
 ROOT_URLCONF = 'market_track.urls'
 
 TEMPLATES = [
@@ -65,6 +107,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'app.context_processors.app_chrome',
             ],
         },
     },
@@ -118,10 +161,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = "/static/"
-STATICFILES_DIRS = (
-    os.path.join(BASE_DIR,"core/static"),
-)
+STATIC_URL = "/web-static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
