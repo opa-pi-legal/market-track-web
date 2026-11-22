@@ -1,0 +1,276 @@
+{% extends "base_app.html" %}
+{% block title %}Dashboard — MercadoTracker{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <h1 class="mt-page-title">Dashboard Operacional</h1>
+    <p class="mt-page-sub">Métricas em tempo real da comunidade e alertas ({{ period_label }}).</p>
+  </div>
+
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <div class="mt-segmented" role="group" aria-label="Período de análise">
+      <a href="?days=7" class="{% if period_key == '7' %}active{% endif %}">7 dias</a>
+      <a href="?days=30" class="{% if period_key == '30' %}active{% endif %}">30 dias</a>
+      <a href="?days=all" class="{% if period_key == 'all' %}active{% endif %}">Tudo</a>
+    </div>
+
+    <a href="{% url 'dashboard_export_csv' %}?metric=all&days={{ period_key }}" class="mt-btn-primary">
+      <i class="bi bi-download"></i> Exportar CSV
+    </a>
+  </div>
+</div>
+
+<!-- Faixa de Atenção Imediata -->
+{% if flagged_count or missing_geo_count %}
+<div class="mt-action-banner mb-4">
+  <div class="d-flex flex-wrap align-items-center gap-2 small fw-semibold">
+    <i class="bi bi-exclamation-triangle-fill text-warning fs-5"></i>
+    <span>Atenção imediata:</span>
+    {% if flagged_count %}
+      <span class="mt-badge-risk mt-num">{{ flagged_count }} oferta{{ flagged_count|pluralize:"s" }} em quarentena</span>
+    {% endif %}
+    {% if missing_geo_count %}
+      <span class="mt-badge-warn mt-num">{{ missing_geo_count }} mercado{{ missing_geo_count|pluralize:"s" }} sem GPS</span>
+    {% endif %}
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    {% if flagged_count %}
+      <a href="{% url 'moderation' %}?tab=offers" class="mt-btn-outline py-1 px-3">
+        Revisar ofertas <i class="bi bi-arrow-right"></i>
+      </a>
+    {% endif %}
+    {% if missing_geo_count %}
+      <a href="{% url 'moderation' %}?tab=markets" class="mt-btn-outline py-1 px-3">
+        Completar GPS <i class="bi bi-arrow-right"></i>
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 5 KPIs Principais -->
+<div class="row g-3 mb-2">
+  <div class="col-6 col-md-4 col-lg">
+    <div class="mt-kpi-card accent">
+      <div class="mt-kpi-label">
+        <span>Usuários</span>
+        <i class="bi bi-people-fill"></i>
+      </div>
+      <div class="mt-kpi-value mt-num">{{ total_users }}</div>
+      <div class="mt-kpi-sub">Contas cadastradas</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-lg">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label">
+        <span>Grupos ativos</span>
+        <i class="bi bi-house-heart text-success"></i>
+      </div>
+      <div class="mt-kpi-value mt-num">{{ active_groups }}</div>
+      <div class="mt-kpi-sub">Grupos sincronizados</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-4 col-lg">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label">
+        <span>Listas criadas</span>
+        <i class="bi bi-card-checklist text-success"></i>
+      </div>
+      <div class="mt-kpi-value mt-num">{{ total_lists }}</div>
+      <div class="mt-kpi-sub">Em uso pelos grupos</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-6 col-lg">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label">
+        <span>Ofertas ({{ period_key }}{% if period_key != 'all' %}d{% endif %})</span>
+        <i class="bi bi-tags-fill text-success"></i>
+      </div>
+      <div class="mt-kpi-value mt-num">{{ offers_period_count }}</div>
+      <div class="mt-kpi-sub mt-num">{{ total_offers }} no histórico total</div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label">
+        <span>Leitura RabbitMQ</span>
+        <i class="bi bi-bell-fill text-success"></i>
+      </div>
+      <div class="mt-kpi-value mt-num">{{ alerts_read_pct }}%</div>
+      <div class="mt-kpi-sub mt-num">{{ read_alerts }} lidos de {{ total_alerts }} alertas</div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-section-divider">
+  <i class="bi bi-bar-chart-line-fill text-success"></i>
+  <span>Gráficos Práticos</span>
+</div>
+
+<!-- Grade 2x2 de Gráficos (Light & Dark nativos) -->
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="mt-surface-card h-100 d-flex flex-column">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title"><i class="bi bi-bell text-success"></i> Taxa de leitura de alertas</h2>
+        <a href="{% url 'dashboard_export_csv' %}?metric=alerts&days={{ period_key }}" class="mt-btn-outline py-1 px-2 small">
+          <i class="bi bi-filetype-csv"></i> CSV
+        </a>
+      </div>
+      <div class="mt-chart-canvas-box flex-grow-1">
+        <canvas id="chartAlerts"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="mt-surface-card h-100 d-flex flex-column">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title"><i class="bi bi-currency-dollar text-success"></i> Preço médio de produtos básicos</h2>
+        <a href="{% url 'dashboard_export_csv' %}?metric=prices&days={{ period_key }}" class="mt-btn-outline py-1 px-2 small">
+          <i class="bi bi-filetype-csv"></i> CSV
+        </a>
+      </div>
+      <div class="mt-chart-canvas-box flex-grow-1">
+        <canvas id="chartPrices"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="mt-surface-card h-100 d-flex flex-column">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title"><i class="bi bi-shop text-success"></i> Mercados com mais ofertas</h2>
+        <a href="{% url 'dashboard_export_csv' %}?metric=markets&days={{ period_key }}" class="mt-btn-outline py-1 px-2 small">
+          <i class="bi bi-filetype-csv"></i> CSV
+        </a>
+      </div>
+      <div class="mt-chart-canvas-box flex-grow-1">
+        <canvas id="chartMarkets"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="mt-surface-card h-100 d-flex flex-column">
+      <div class="mt-card-header-row">
+        <h2 class="mt-card-title"><i class="bi bi-pie-chart text-success"></i> Categorias mais pesquisadas</h2>
+        <a href="{% url 'dashboard_export_csv' %}?metric=categories&days={{ period_key }}" class="mt-btn-outline py-1 px-2 small">
+          <i class="bi bi-filetype-csv"></i> CSV
+        </a>
+      </div>
+      <div class="mt-chart-canvas-box flex-grow-1">
+        <canvas id="chartCategories"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const data = {{ charts_json|safe }};
+    const palette = ["#14634e", "#10b981", "#0ea5e9", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#84cc16"];
+    const instances = [];
+
+    function themeColors() {
+      const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      return {
+        text: isDark ? "#cbd5e1" : "#334155",
+        grid: isDark ? "rgba(148, 163, 184, 0.14)" : "rgba(15, 23, 42, 0.08)",
+        bar: isDark ? "#16a078" : "#14634e",
+      };
+    }
+
+    function buildCharts() {
+      instances.forEach((c) => c.destroy());
+      instances.length = 0;
+      const tc = themeColors();
+
+      const commonScales = {
+        x: { ticks: { color: tc.text, font: { size: 11 } }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: tc.text, font: { size: 11 } }, grid: { color: tc.grid } },
+      };
+
+      const elAlerts = document.getElementById("chartAlerts");
+      if (elAlerts) {
+        const vals = (data.alerts.values[0] + data.alerts.values[1]) > 0 ? data.alerts.values : [1, 0];
+        const lbls = (data.alerts.values[0] + data.alerts.values[1]) > 0 ? data.alerts.labels : ["Sem alertas no período", ""];
+        instances.push(new Chart(elAlerts, {
+          type: "doughnut",
+          data: { labels: lbls, datasets: [{ data: vals, backgroundColor: [tc.bar, "#f59e0b"], borderWidth: 0 }] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: "62%",
+            plugins: { legend: { position: "bottom", labels: { color: tc.text, boxWidth: 12 } } },
+          },
+        }));
+      }
+
+      const elPrices = document.getElementById("chartPrices");
+      if (elPrices) {
+        instances.push(new Chart(elPrices, {
+          type: "bar",
+          data: {
+            labels: data.prices.labels.length ? data.prices.labels : ["Sem ofertas"],
+            datasets: [{ label: "Preço médio (R$)", data: data.prices.values.length ? data.prices.values : [0], backgroundColor: tc.bar, borderRadius: 6 }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: commonScales,
+          },
+        }));
+      }
+
+      const elMarkets = document.getElementById("chartMarkets");
+      if (elMarkets) {
+        instances.push(new Chart(elMarkets, {
+          type: "bar",
+          data: {
+            labels: data.markets.labels.length ? data.markets.labels : ["Sem mercados"],
+            datasets: [{ label: "Ofertas", data: data.markets.values.length ? data.markets.values : [0], backgroundColor: palette, borderRadius: 6 }],
+          },
+          options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { beginAtZero: true, ticks: { color: tc.text, precision: 0 }, grid: { color: tc.grid } },
+              y: { ticks: { color: tc.text, font: { size: 11 } }, grid: { display: false } },
+            },
+          },
+        }));
+      }
+
+      const elCats = document.getElementById("chartCategories");
+      if (elCats) {
+        instances.push(new Chart(elCats, {
+          type: "pie",
+          data: {
+            labels: data.categories.labels.length ? data.categories.labels : ["Geral"],
+            datasets: [{ data: data.categories.values.length ? data.categories.values : [1], backgroundColor: palette, borderWidth: 0 }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: "right", labels: { color: tc.text, boxWidth: 12, font: { size: 11 } } } },
+          },
+        }));
+      }
+    }
+
+    buildCharts();
+    window.addEventListener("mt-theme-change", buildCharts);
+  })();
+</script>
+{% endblock %}
