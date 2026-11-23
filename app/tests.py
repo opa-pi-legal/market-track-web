@@ -177,10 +177,8 @@ class MarketTrackWebTests(TestCase):
     @patch("app.services.get_group_members")
     @patch("app.services.get_shopping_list")
     @patch("app.services.get_shopping_lists")
-    @patch("app.services.get_groups")
     def test_lists_and_list_detail_and_delete(
         self,
-        mock_groups,
         mock_lists,
         mock_list_get,
         mock_members,
@@ -188,29 +186,79 @@ class MarketTrackWebTests(TestCase):
         mock_delete,
     ):
         self._login_session()
-        mock_groups.return_value = [{"id": 1, "name": "Casa"}]
         mock_lists.return_value = [
-            {"id": 10, "name": "Churrasco", "group": 1, "budget_cents": 30000, "status": "open"}
+            {
+                "id": 10,
+                "name": "Churrasco",
+                "group": 1,
+                "group_name": "Casa",
+                "owner_username": "Ana Paula",
+                "owner_email": "ana@example.com",
+                "items_count": 3,
+                "budget_cents": 30000,
+                "status": "active",
+            },
+            {
+                "id": 25,
+                "name": "Compras da Semana",
+                "group": 2,
+                "group_name": "Escritório",
+                "owner_username": "Carlos Eduardo",
+                "owner_email": "carlos@example.com",
+                "items_count": 7,
+                "budget_cents": 45000,
+                "status": "active",
+            },
         ]
         mock_list_get.return_value = {
             "id": 10,
             "name": "Churrasco",
             "group": 1,
+            "group_name": "Casa",
+            "owner_username": "Ana Paula",
+            "owner_email": "ana@example.com",
             "budget_cents": 30000,
         }
-        mock_members.return_value = [{"id": 50, "user_username": "Ana Paula", "is_admin": True}]
+        mock_members.return_value = [
+            {"id": 50, "user_username": "Ana Paula", "user_email": "ana@example.com", "is_admin": True}
+        ]
         mock_items.return_value = [
             {"id": 99, "product_name": "Picanha 1kg", "quantity": 2, "selected_price_cents": 6990}
         ]
 
+        # Visão geral traz todas as listas de todos os usuários/grupos
         resp_idx = self.client.get(reverse("lists"))
         self.assertEqual(resp_idx.status_code, 200)
         self.assertContains(resp_idx, "Churrasco")
+        self.assertContains(resp_idx, "Compras da Semana")
+        self.assertContains(resp_idx, "Ana Paula")
+        self.assertContains(resp_idx, "#10")
+        mock_lists.assert_called_with("fake-jwt-token", all_groups=True, query="")
+
+        # Busca por ID (aceita #25)
+        resp_by_id = self.client.get(reverse("lists") + "?q=%2325")
+        self.assertEqual(resp_by_id.status_code, 200)
+        self.assertContains(resp_by_id, "Compras da Semana")
+        self.assertNotContains(resp_by_id, "Churrasco")
+
+        # Busca por nome do usuário
+        resp_by_user = self.client.get(reverse("lists") + "?q=Carlos")
+        self.assertEqual(resp_by_user.status_code, 200)
+        self.assertContains(resp_by_user, "Compras da Semana")
+        self.assertNotContains(resp_by_user, "Churrasco")
+
+        # Busca por nome da lista
+        resp_by_name = self.client.get(reverse("lists") + "?q=Churrasco")
+        self.assertEqual(resp_by_name.status_code, 200)
+        self.assertContains(resp_by_name, "Churrasco")
+        self.assertNotContains(resp_by_name, "Compras da Semana")
 
         resp_det = self.client.get(reverse("list_detail", kwargs={"list_id": 10}))
         self.assertEqual(resp_det.status_code, 200)
+        self.assertContains(resp_det, "ID #10")
         self.assertContains(resp_det, "Ana Paula")
         self.assertContains(resp_det, "Picanha 1kg")
+        mock_list_get.assert_called_with("fake-jwt-token", 10, all_groups=True)
 
         resp_del = self.client.post(reverse("list_delete", kwargs={"list_id": 10}))
         self.assertRedirects(resp_del, reverse("lists"), fetch_redirect_response=False)
@@ -289,9 +337,13 @@ class MarketTrackWebTests(TestCase):
         self.client.post(reverse("product_delete", kwargs={"product_id": 42}))
         mock_delete.assert_called_once()
 
+    @patch("app.services.delete_market")
+    @patch("app.services.create_market")
+    @patch("app.services.update_product")
     @patch("app.services.update_market")
     @patch("app.services.promote_product_global")
     @patch("app.services.moderate_offer")
+    @patch("app.services.get_groups")
     @patch("app.services.get_users")
     @patch("app.services.get_markets")
     @patch("app.services.get_products")
@@ -302,11 +354,16 @@ class MarketTrackWebTests(TestCase):
         mock_products,
         mock_markets,
         mock_users,
+        mock_groups,
         mock_moderate,
         mock_promote,
         mock_update_market,
+        mock_update_product,
+        mock_create_market,
+        mock_delete_market,
     ):
         self._login_session(is_staff=True)
+        mock_groups.return_value = [{"id": 1, "name": "Família Silva"}]
         mock_offers.return_value = [
             {
                 "id": 77,
@@ -319,7 +376,7 @@ class MarketTrackWebTests(TestCase):
             }
         ]
         mock_products.return_value = [
-            {"id": 88, "name": "Biscoito Oreo 90g", "barcode": "7622210449283", "is_global": False}
+            {"id": 88, "name": "Biscoito Oreo 90g", "barcode": "7622210449283", "group_id": "1", "is_global": False}
         ]
         mock_markets.return_value = [
             {"id": 9, "name": "Supermercado Central", "city": "", "latitude": None, "longitude": None}
@@ -334,9 +391,12 @@ class MarketTrackWebTests(TestCase):
 
         r_cat = self.client.get(reverse("moderation") + "?tab=catalog")
         self.assertContains(r_cat, "Biscoito Oreo 90g")
+        self.assertContains(r_cat, "Família Silva (#1)")
+        self.assertContains(r_cat, "Promover todos com EAN")
 
         r_mkt = self.client.get(reverse("moderation") + "?tab=markets")
         self.assertContains(r_mkt, "Supermercado Central")
+        self.assertContains(r_mkt, "Cadastrar Novo Mercado")
         self.assertContains(r_mkt, "Buscar GPS")
 
         r_ban = self.client.get(reverse("moderation") + "?tab=banned")
@@ -345,27 +405,85 @@ class MarketTrackWebTests(TestCase):
         self.client.post(reverse("moderation_offer_action", kwargs={"offer_id": 77}), {"action": "approve"})
         mock_moderate.assert_called_once_with("fake-jwt-token", 77, "approve")
 
-        self.client.post(reverse("moderation_product_action", kwargs={"product_id": 88}), {"action": "promote"})
+        # Promoção com edição inline na curadoria
+        self.client.post(
+            reverse("moderation_product_action", kwargs={"product_id": 88}),
+            {
+                "action": "promote",
+                "name": "Biscoito Oreo 90g Original",
+                "brand": "Mondelez",
+                "category": "Mercearia",
+                "barcode": "7622210449283",
+            },
+        )
+        mock_update_product.assert_called_once()
         mock_promote.assert_called_once_with("fake-jwt-token", 88)
 
+        # Promoção em lote dos produtos com EAN
+        self.client.post(reverse("moderation_product_bulk_promote"), {"mode": "with_ean"})
+        self.assertEqual(mock_promote.call_count, 2)
+
+        # Criar novo mercado
+        self.client.post(
+            reverse("moderation_market_create"),
+            {
+                "name": "Atacadão Campinas",
+                "brand": "Atacadão",
+                "city": "Campinas",
+                "address": "Rod. Dom Pedro I",
+                "latitude": "-22.8542",
+                "longitude": "-47.0481",
+            },
+        )
+        mock_create_market.assert_called_once()
+
+        # Editar mercado existente
         self.client.post(
             reverse("moderation_market_geo", kwargs={"market_id": 9}),
-            {"city": "Campinas", "latitude": "-22.9056", "longitude": "-47.0608"},
+            {
+                "name": "Supermercado Central",
+                "brand": "Rede Central",
+                "city": "Campinas",
+                "address": "Av. Brasil, 100",
+                "latitude": "-22.9056",
+                "longitude": "-47.0608",
+            },
         )
         mock_update_market.assert_called_once()
 
+        # Excluir mercado
+        self.client.post(reverse("moderation_market_delete", kwargs={"market_id": 9}))
+        mock_delete_market.assert_called_once_with("fake-jwt-token", 9)
+
+    @patch("app.services.get_rabbitmq_queues")
     @patch("app.services.create_community_offer")
     @patch("app.services.get_activity_logs")
     @patch("app.services.get_groups")
     @patch("app.services.check_services_health")
     def test_maintenance_live_health_and_offer_simulation(
-        self, mock_health, mock_groups, mock_logs, mock_create_offer
+        self, mock_health, mock_groups, mock_logs, mock_create_offer, mock_queues
     ):
         self._login_session()
         mock_health.return_value = [
             {"name": "Core API", "ok": True, "status_code": 200, "latency_ms": 42, "endpoint": "/core-api/health/", "detail": "Operacional"},
             {"name": "Market API", "ok": True, "status_code": 200, "latency_ms": 51, "endpoint": "/market-api/health/", "detail": "Operacional"},
             {"name": "Product API", "ok": True, "status_code": 200, "latency_ms": 38, "endpoint": "/product-api/health/", "detail": "Operacional"},
+        ]
+        mock_queues.return_value = [
+            {
+                "name": "core_api.events",
+                "vhost": "/",
+                "state": "running",
+                "ok": True,
+                "consumers": 1,
+                "messages_ready": 0,
+                "messages_unack": 0,
+                "messages_total": 0,
+                "published_total": 71,
+                "delivered_total": 71,
+                "acked_total": 69,
+                "description": "Processa ofertas publicadas.",
+            }
         ]
         mock_groups.return_value = [{"id": 1, "name": "Staff"}]
         mock_logs.return_value = [{"action": "offer.published", "description": "Café Pilão", "created_at": "2026-11-22T18:00:00Z"}]
@@ -374,6 +492,8 @@ class MarketTrackWebTests(TestCase):
         resp = self.client.get(reverse("maintenance"))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Simulador ofertas comunitárias")
+        self.assertContains(resp, "Filas do RabbitMQ")
+        self.assertContains(resp, "core_api.events")
         self.assertContains(resp, "Disparar Oferta")
         self.assertContains(resp, "Abrir docs")
         self.assertNotContains(resp, "Preset:")
@@ -381,6 +501,7 @@ class MarketTrackWebTests(TestCase):
         json_resp = self.client.get(reverse("maintenance_health_json"))
         self.assertEqual(json_resp.status_code, 200)
         self.assertEqual(len(json_resp.json()["health_checks"]), 3)
+        self.assertEqual(len(json_resp.json()["rabbitmq_queues"]), 1)
 
         sim = self.client.post(
             reverse("maintenance_simulate_offer"),
