@@ -207,26 +207,47 @@ def create_staff_user(token: str, email: str, username: str = "", password: str 
 # Grupos & Listas de Compras
 # ---------------------------------------------------------------------------
 
-def get_groups(token: str) -> list[dict]:
-    return safe_get_list("/core-api/api/groups/", token)
+def get_groups(token: str, all_groups: bool = False) -> list[dict]:
+    params = {"all_groups": "true"} if all_groups else None
+    return safe_get_list("/core-api/api/groups/", token, params=params)
 
 
-def get_group_members(token: str, group_id) -> list[dict]:
-    return safe_get_list("/core-api/api/user-groups/", token, params={"group": str(group_id)})
+def get_group_members(token: str, group_id, all_groups: bool = False) -> list[dict]:
+    params: dict[str, str] = {"group": str(group_id)}
+    if all_groups:
+        params["all_groups"] = "true"
+    return safe_get_list("/core-api/api/user-groups/", token, params=params)
 
 
 def remove_group_member(token: str, membership_id) -> None:
     api_request("DELETE", f"/core-api/api/user-groups/{membership_id}/", token=token)
 
 
-def get_shopping_lists(token: str, group_id=None) -> list[dict]:
-    params = {"group": str(group_id)} if group_id else None
-    return safe_get_list("/core-api/api/shopping-lists/", token, params=params)
+def get_shopping_lists(
+    token: str,
+    group_id=None,
+    all_groups: bool = False,
+    query: str = "",
+) -> list[dict]:
+    params: dict[str, str] = {}
+    if all_groups:
+        params["all_groups"] = "true"
+    if group_id:
+        params["group"] = str(group_id)
+    if query:
+        params["q"] = query
+    return safe_get_list("/core-api/api/shopping-lists/", token, params=params or None)
 
 
-def get_shopping_list(token: str, list_id) -> dict | None:
+def get_shopping_list(token: str, list_id, all_groups: bool = False) -> dict | None:
+    params = {"all_groups": "true"} if all_groups else None
     try:
-        data = api_request("GET", f"/core-api/api/shopping-lists/{list_id}/", token=token)
+        data = api_request(
+            "GET",
+            f"/core-api/api/shopping-lists/{list_id}/",
+            token=token,
+            params=params,
+        )
         return data if isinstance(data, dict) else None
     except APIError:
         return None
@@ -236,11 +257,14 @@ def delete_shopping_list(token: str, list_id) -> None:
     api_request("DELETE", f"/core-api/api/shopping-lists/{list_id}/", token=token)
 
 
-def get_shopping_list_items(token: str, list_id) -> list[dict]:
+def get_shopping_list_items(token: str, list_id, all_groups: bool = False) -> list[dict]:
+    params: dict[str, str] = {"shopping_list": str(list_id)}
+    if all_groups:
+        params["all_groups"] = "true"
     return safe_get_list(
         "/core-api/api/shopping-list-items/",
         token,
-        params={"shopping_list": str(list_id)},
+        params=params,
     )
 
 
@@ -357,13 +381,29 @@ def promote_product_global(token: str, product_id) -> dict:
     )
 
 
-def get_markets(token: str, group_id=None, all_groups: bool = False) -> list[dict]:
+def get_markets(
+    token: str,
+    group_id=None,
+    all_groups: bool = False,
+    query: str = "",
+) -> list[dict]:
     params: dict[str, str] = {}
     if all_groups:
         params["all_groups"] = "true"
     elif group_id:
         params["group_id"] = str(group_id)
+    if query:
+        params["q"] = query
     return safe_get_list("/market-api/api/market/", token, params=params)
+
+
+def create_market(token: str, payload: dict) -> dict:
+    return api_request(
+        "POST",
+        "/market-api/api/market/",
+        token=token,
+        payload=payload,
+    )
 
 
 def update_market(token: str, market_id, payload: dict) -> dict:
@@ -373,6 +413,10 @@ def update_market(token: str, market_id, payload: dict) -> dict:
         token=token,
         payload=payload,
     )
+
+
+def delete_market(token: str, market_id) -> None:
+    api_request("DELETE", f"/market-api/api/market/{market_id}/", token=token)
 
 
 # ---------------------------------------------------------------------------
@@ -415,3 +459,68 @@ def check_services_health() -> list[dict]:
                 }
             )
     return results
+
+
+def get_rabbitmq_queues() -> list[dict]:
+    """
+    Consulta a API HTTP de Management do RabbitMQ (15672) na rede Docker interna
+    ou localhost para exibir o estado real das filas na tela de Manutenção.
+    """
+    import os
+
+    rmq_user = os.getenv("RABBITMQ_USER", "guest")
+    rmq_pass = os.getenv("RABBITMQ_PASS", "guest")
+    candidates = [
+        os.getenv("RABBITMQ_MGMT_URL", "").rstrip("/"),
+        "http://rabbitmq:15672",
+        "http://127.0.0.1:15672",
+    ]
+    descriptions = {
+        "core_api.events": "Processa ofertas publicadas, dispara alertas de preço (PriceAlert) e grava logs de auditoria.",
+        "product_api.group_events": "Sincroniza exclusão de grupos limpando produtos privados (preserva Catálogo Global).",
+        "market_api.group_events": "Sincroniza exclusão de grupos limpando mercados privados daquele grupo.",
+    }
+
+    for base in candidates:
+        if not base:
+            continue
+        try:
+            resp = requests.get(
+                f"{base}/api/queues",
+                auth=(rmq_user, rmq_pass),
+                timeout=2.0,
+            )
+            if not resp.ok:
+                continue
+            raw_list = resp.json()
+            if not isinstance(raw_list, list):
+                continue
+            queues = []
+            for q in raw_list:
+                if not isinstance(q, dict):
+                    continue
+                name = str(q.get("name") or "")
+                stats = q.get("message_stats") if isinstance(q.get("message_stats"), dict) else {}
+                state = str(q.get("state") or "running").lower()
+                consumers = int(q.get("consumers") or 0)
+                queues.append(
+                    {
+                        "name": name,
+                        "vhost": q.get("vhost") or "/",
+                        "state": state,
+                        "ok": state == "running" and consumers > 0,
+                        "consumers": consumers,
+                        "messages_ready": int(q.get("messages_ready") or 0),
+                        "messages_unack": int(q.get("messages_unacknowledged") or 0),
+                        "messages_total": int(q.get("messages") or 0),
+                        "published_total": int(stats.get("publish") or 0),
+                        "delivered_total": int(stats.get("deliver_get") or stats.get("deliver") or 0),
+                        "acked_total": int(stats.get("ack") or 0),
+                        "description": descriptions.get(name, "Fila de eventos assíncronos do domínio."),
+                    }
+                )
+            queues.sort(key=lambda item: item["name"])
+            return queues
+        except requests.RequestException:
+            continue
+    return []

@@ -20,7 +20,8 @@ class maintenance_view(View):
             return redirect(r("login"))
 
         health_checks = services.check_services_health()
-        groups = services.get_groups(token)
+        rabbitmq_queues = services.get_rabbitmq_queues()
+        groups = services.get_groups(token, all_groups=True)
         active_gid = request.session.get("active_group_id") or (groups[0].get("id") if groups else None)
         logs_raw = services.get_activity_logs(token, group_id=active_gid)
 
@@ -33,13 +34,19 @@ class maintenance_view(View):
             for item in logs_raw[:25]
         ]
 
+        api_base = getattr(settings, "PUBLIC_API_BASE_URL", settings.API_BASE_URL)
+        host_only = api_base.split("://")[-1].split(":")[0].split("/")[0] or "127.0.0.1"
+        rabbitmq_console_url = f"http://{host_only}:15672/#/queues"
+
         return render(
             request,
             self.template_name,
             {
                 "active_nav": "maintenance",
-                "api_base_url": getattr(settings, "PUBLIC_API_BASE_URL", settings.API_BASE_URL),
+                "api_base_url": api_base,
+                "rabbitmq_console_url": rabbitmq_console_url,
                 "health_checks": health_checks,
+                "rabbitmq_queues": rabbitmq_queues,
                 "checked_at": datetime.now().strftime("%H:%M:%S"),
                 "logs": logs,
                 "groups": groups,
@@ -56,6 +63,7 @@ class maintenance_health_json_view(View):
         return JsonResponse(
             {
                 "health_checks": services.check_services_health(),
+                "rabbitmq_queues": services.get_rabbitmq_queues(),
                 "checked_at": datetime.now().strftime("%H:%M:%S"),
             }
         )

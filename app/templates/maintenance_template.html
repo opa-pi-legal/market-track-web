@@ -5,7 +5,7 @@
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
   <div>
     <h1 class="mt-page-title">Manutenção &amp; Mensageria</h1>
-    <p class="mt-page-sub">Monitoramento ao vivo dos microsserviços e simulador de eventos RabbitMQ.</p>
+    <p class="mt-page-sub">Monitoramento ao vivo dos microsserviços, filas do RabbitMQ e simulador de eventos.</p>
   </div>
   <span class="mt-badge-group py-2 px-3 mt-num">
     <i class="bi bi-hdd-network text-success"></i> Gateway: {{ api_base_url }}
@@ -13,7 +13,7 @@
 </div>
 
 <!-- Painel 1: Saúde dos Microsserviços (Refresh via AJAX) -->
-<section class="mt-surface-card">
+<section class="mt-surface-card mb-4">
   <div class="mt-card-header-row">
     <h2 class="mt-card-title">
       <i class="bi bi-heart-pulse-fill text-success"></i> Saúde dos Microsserviços
@@ -68,8 +68,71 @@
   </div>
 </section>
 
-<!-- Painel 2: Simulador ofertas comunitárias -->
-<section class="mt-surface-card">
+<!-- Painel 2: Filas do RabbitMQ em Tempo Real -->
+<section class="mt-surface-card mb-4">
+  <div class="mt-card-header-row flex-wrap gap-2">
+    <div>
+      <h2 class="mt-card-title">
+        <i class="bi bi-diagram-3-fill text-success"></i> Filas do RabbitMQ (Topic Exchange: <code>market_track.events</code>)
+      </h2>
+      <p class="small text-secondary mb-0">
+        Estado em tempo real das filas assíncronas e workers consumidores conectados ao broker.
+      </p>
+    </div>
+
+    <a href="{{ rabbitmq_console_url }}" target="_blank" rel="noopener" class="mt-btn-outline py-1 px-3">
+      <i class="bi bi-box-arrow-up-right"></i> Abrir Console RabbitMQ (:15672)
+    </a>
+  </div>
+
+  <div class="mt-table-wrap">
+    <table class="mt-table">
+      <thead>
+        <tr>
+          <th>Fila</th>
+          <th>Finalidade</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">Consumers</th>
+          <th class="text-center">Na Fila (Ready / Unacked)</th>
+          <th class="text-end">Publicadas / Confirmadas (Ack)</th>
+        </tr>
+      </thead>
+      <tbody id="rabbitmqQueuesBody">
+        {% for q in rabbitmq_queues %}
+          <tr>
+            <td>
+              <code class="fw-bold">{{ q.name }}</code>
+            </td>
+            <td class="small text-secondary">{{ q.description }}</td>
+            <td class="text-center">
+              {% if q.ok %}
+                <span class="mt-badge-global"><span class="mt-live-dot me-1"></span> {{ q.state|upper }}</span>
+              {% else %}
+                <span class="mt-badge-warn">{{ q.state|upper }}</span>
+              {% endif %}
+            </td>
+            <td class="text-center mt-num fw-semibold">{{ q.consumers }} worker{{ q.consumers|pluralize:"s" }}</td>
+            <td class="text-center mt-num">
+              <span class="fw-bold">{{ q.messages_ready }}</span> / <span class="text-secondary">{{ q.messages_unack }}</span>
+            </td>
+            <td class="text-end mt-num">
+              <span class="fw-bold text-success">{{ q.published_total }}</span> pub · <span class="text-secondary">{{ q.acked_total }} ack</span>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6" class="text-center py-4 small text-secondary">
+              Não foi possível consultar a API de gerenciamento do RabbitMQ no momento.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Painel 3: Simulador ofertas comunitárias -->
+<section class="mt-surface-card mb-4">
   <div class="mt-card-header-row">
     <div>
       <h2 class="mt-card-title">
@@ -128,7 +191,7 @@
   </form>
 </section>
 
-<!-- Painel 3: Registro de Atividades -->
+<!-- Painel 4: Registro de Atividades -->
 <section class="mt-surface-card">
   <div class="mt-card-header-row">
     <h2 class="mt-card-title">
@@ -174,9 +237,10 @@
       });
     });
 
-    // 2. Atualização ao vivo do status dos microsserviços sem reload
+    // 2. Atualização ao vivo do status dos microsserviços e filas RabbitMQ sem reload
     const refreshBtn = document.getElementById("refreshHealthBtn");
     const grid = document.getElementById("healthCardsGrid");
+    const queuesBody = document.getElementById("rabbitmqQueuesBody");
     const tsEl = document.getElementById("healthCheckedAt");
     const apiBase = "{{ api_base_url|escapejs }}";
 
@@ -225,6 +289,24 @@
                     </div>
                   </div>
                 </div>`;
+            }).join("");
+          }
+
+          if (resp.ok && queuesBody && Array.isArray(data.rabbitmq_queues) && data.rabbitmq_queues.length > 0) {
+            queuesBody.innerHTML = data.rabbitmq_queues.map(function (q) {
+              const badge = q.ok
+                ? `<span class="mt-badge-global"><span class="mt-live-dot me-1"></span> ${String(q.state || "RUNNING").toUpperCase()}</span>`
+                : `<span class="mt-badge-warn">${String(q.state || "IDLE").toUpperCase()}</span>`;
+              const plural = q.consumers === 1 ? "worker" : "workers";
+              return `
+                <tr>
+                  <td><code class="fw-bold">${q.name}</code></td>
+                  <td class="small text-secondary">${q.description || ""}</td>
+                  <td class="text-center">${badge}</td>
+                  <td class="text-center mt-num fw-semibold">${q.consumers} ${plural}</td>
+                  <td class="text-center mt-num"><span class="fw-bold">${q.messages_ready}</span> / <span class="text-secondary">${q.messages_unack}</span></td>
+                  <td class="text-end mt-num"><span class="fw-bold text-success">${q.published_total}</span> pub · <span class="text-secondary">${q.acked_total} ack</span></td>
+                </tr>`;
             }).join("");
           }
         } catch (_) {
