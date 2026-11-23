@@ -6,9 +6,31 @@ from django.views import View
 from app import services
 from app.views.helpers import format_brl, format_iso_date, get_session_token
 
+DEFAULT_CATEGORIES = [
+    "Mercearia",
+    "Bebidas",
+    "Laticínios",
+    "Carnes e Aves",
+    "Hortifrúti",
+    "Padaria",
+    "Limpeza",
+    "Higiene",
+    "Congelados",
+    "Pet",
+    "Geral",
+]
+
 
 def _moderation_redirect(tab: str):
     return redirect(f"{r('moderation')}?tab={tab}")
+
+
+def _resolve_group_label(group_id, groups_by_id: dict[str, str]) -> str:
+    gid = str(group_id or "").strip()
+    if not gid or gid.lower() == "global":
+        return "Global"
+    gname = groups_by_id.get(gid)
+    return f"{gname} (#{gid})" if gname else f"Grupo #{gid}"
 
 
 class moderation_view(View):
@@ -23,6 +45,13 @@ class moderation_view(View):
         if active_tab not in ("offers", "catalog", "markets", "banned"):
             active_tab = "offers"
 
+        groups = services.get_groups(token, all_groups=True)
+        groups_by_id = {
+            str(g.get("id")): (g.get("name") or f"Grupo #{g.get('id')}")
+            for g in groups
+            if g.get("id") is not None
+        }
+
         # 1. Ofertas denunciadas / em quarentena
         flagged_raw = services.get_community_offers(
             token,
@@ -32,7 +61,8 @@ class moderation_view(View):
         if not flagged_raw:
             all_offers = services.get_community_offers(token, active_only=False)
             flagged_raw = [
-                o for o in all_offers
+                o
+                for o in all_offers
                 if o.get("moderation_status") in ("flagged", "removed")
                 or int(o.get("abuse_reports_count") or 0) > 0
                 or int(o.get("reports_count") or 0) > 0
@@ -64,36 +94,127 @@ class moderation_view(View):
                 }
             )
 
-        # 2. Produtos aguardando curadoria para Catálogo Global
+        # 2. Curadoria para Catálogo Global
+        catalog_q = (request.GET.get("catalog_q") or "").strip()
+        catalog_q_low = catalog_q.lower()
+        catalog_filter = (request.GET.get("catalog_filter") or "all").strip().lower()
+        if catalog_filter not in ("all", "with_ean", "missing_ean", "global"):
+            catalog_filter = "all"
+
         all_prods = services.get_products(token, all_groups=True)
-        pending_global_products = [
-            {
+        categories_set = set(DEFAULT_CATEGORIES)
+
+        pending_all = []
+        global_all = []
+        for p in all_prods:
+            cat = (p.get("category") or "Geral").strip()
+            categories_set.add(cat)
+            barcode = (p.get("barcode") or "").strip()
+            brand = (p.get("brand") or "").strip()
+            gid = p.get("group_id")
+            item = {
                 "id": p.get("id"),
                 "name": p.get("name") or "Produto",
-                "category": p.get("category") or "Geral",
-                "barcode": (p.get("barcode") or "").strip(),
-                "group_id": p.get("group_id"),
+                "brand": brand,
+                "category": cat,
+                "barcode": barcode,
+                "has_ean": bool(barcode),
+                "group_id": gid,
+                "group_label": _resolve_group_label(gid, groups_by_id),
+                "is_global": bool(p.get("is_global")),
+                "verified_source": p.get("verified_source") or "group",
+                "created_at_fmt": format_iso_date(p.get("created_at")),
             }
-            for p in all_prods
-            if not p.get("is_global")
-        ][:40]
+            if item["is_global"]:
+                global_all.append(item)
+            else:
+                pending_all.append(item)
 
-        # 3. Saneamento de Mercados
+        pending_total_count = len(pending_all)
+        pending_with_ean_count = sum(1 for p in pending_all if p["has_ean"])
+        pending_missing_ean_count = pending_total_count - pending_with_ean_count
+        global_total_count = len(global_all)
+
+        source_pool = global_all if catalog_filter == "global" else pending_all
+        filtered_catalog = []
+        for prod in source_pool:
+            if catalog_filter == "with_ean" and not prod["has_ean"]:
+                continue
+            if catalog_filter == "missing_ean" and prod["has_ean"]:
+                continue
+            if catalog_q_low:
+                haystack = " ".join(
+                    [
+                        str(prod["id"] or ""),
+                        prod["name"],
+                        prod["brand"],
+                        prod["category"],
+                        prod["barcode"],
+                        prod["group_label"],
+                    ]
+                ).lower()
+                if catalog_q_low not in haystack:
+                    continue
+            filtered_catalog.append(prod)
+
+        # Ordena priorizando produtos que já têm EAN para curadoria rápida
+        filtered_catalog.sort(key=lambda x: (not x["has_ean"], x["name"].lower()))
+
+        # 3. Manutenção & Saneamento de Mercados
+        market_q = (request.GET.get("market_q") or "").strip()
+        market_q_low = market_q.lower()
+        market_filter = (request.GET.get("market_filter") or "all").strip().lower()
+        if market_filter not in ("all", "missing_geo", "with_geo"):
+            market_filter = "all"
+
         all_markets = services.get_markets(token, all_groups=True)
-        markets = [
-            {
-                "id": m.get("id"),
-                "name": m.get("name") or "Mercado",
-                "city": m.get("city") or "",
-                "latitude": "" if m.get("latitude") is None else m.get("latitude"),
-                "longitude": "" if m.get("longitude") is None else m.get("longitude"),
-                "created_at_fmt": format_iso_date(m.get("created_at")),
-                "missing_geo": m.get("latitude") is None or m.get("longitude") is None,
-            }
-            for m in all_markets
-        ]
-        markets.sort(key=lambda m: (not m["missing_geo"], m["name"].lower()))
-        missing_geo_count = sum(1 for m in markets if m["missing_geo"])
+        markets_all_mapped = []
+        for m in all_markets:
+            lat = m.get("latitude")
+            lng = m.get("longitude")
+            missing_geo = lat is None or lng is None
+            gid = m.get("group_id")
+            markets_all_mapped.append(
+                {
+                    "id": m.get("id"),
+                    "name": m.get("name") or "Mercado",
+                    "brand": m.get("brand") or "",
+                    "address": m.get("address") or "",
+                    "city": m.get("city") or "",
+                    "latitude": "" if lat is None else lat,
+                    "longitude": "" if lng is None else lng,
+                    "group_id": gid,
+                    "group_label": _resolve_group_label(gid, groups_by_id),
+                    "created_at_fmt": format_iso_date(m.get("created_at")),
+                    "missing_geo": missing_geo,
+                }
+            )
+
+        markets_all_mapped.sort(key=lambda m: (not m["missing_geo"], m["name"].lower()))
+        total_markets_count = len(markets_all_mapped)
+        missing_geo_count = sum(1 for m in markets_all_mapped if m["missing_geo"])
+        with_geo_count = total_markets_count - missing_geo_count
+
+        markets = []
+        for m in markets_all_mapped:
+            if market_filter == "missing_geo" and not m["missing_geo"]:
+                continue
+            if market_filter == "with_geo" and m["missing_geo"]:
+                continue
+            if market_q_low:
+                haystack = " ".join(
+                    [
+                        str(m["id"] or ""),
+                        m["name"],
+                        m["brand"],
+                        m["city"],
+                        m["address"],
+                        m["group_label"],
+                    ]
+                ).lower()
+                if market_q_low not in haystack:
+                    continue
+            markets.append(m)
 
         # 4. Contas restritas
         users = services.get_users(token)
@@ -109,9 +230,20 @@ class moderation_view(View):
                 "active_nav": "moderation",
                 "active_tab": active_tab,
                 "flagged_offers": flagged_offers,
-                "pending_global_products": pending_global_products,
-                "markets": markets[:40],
+                "pending_global_products": filtered_catalog[:100],
+                "pending_total_count": pending_total_count,
+                "pending_with_ean_count": pending_with_ean_count,
+                "pending_missing_ean_count": pending_missing_ean_count,
+                "global_total_count": global_total_count,
+                "catalog_q": catalog_q,
+                "catalog_filter": catalog_filter,
+                "catalog_categories": sorted(categories_set),
+                "markets": markets[:120],
+                "total_markets_count": total_markets_count,
                 "missing_geo_count": missing_geo_count,
+                "with_geo_count": with_geo_count,
+                "market_q": market_q,
+                "market_filter": market_filter,
                 "banned_users": banned_users,
                 "is_staff": True,
             },
@@ -146,10 +278,27 @@ class moderation_product_action_view(View):
             return redirect(r("login"))
 
         action = (request.POST.get("action") or "promote").strip().lower()
+        update_fields = {}
+        for field in ("name", "brand", "category", "barcode"):
+            if field in request.POST:
+                val = (request.POST.get(field) or "").strip()
+                if field == "name" and val:
+                    update_fields["name"] = val
+                elif field == "category" and val:
+                    update_fields["category"] = val
+                elif field in ("brand", "barcode"):
+                    update_fields[field] = val or None
+
         try:
-            if action == "promote":
+            if action == "save":
+                if update_fields:
+                    services.update_product(token, product_id, update_fields)
+                    messages.success(request, f"Dados do produto #{product_id} atualizados na curadoria.")
+            elif action == "promote":
+                if update_fields:
+                    services.update_product(token, product_id, update_fields)
                 services.promote_product_global(token, product_id)
-                messages.success(request, f"Produto #{product_id} promovido ao Catálogo Global!")
+                messages.success(request, f"Produto #{product_id} revisado e promovido ao Catálogo Global!")
             elif action == "reject":
                 services.delete_product(token, product_id)
                 messages.info(request, f"Produto #{product_id} recusado e removido.")
@@ -158,19 +307,109 @@ class moderation_product_action_view(View):
         return _moderation_redirect("catalog")
 
 
+class moderation_product_bulk_promote_view(View):
+    def post(self, request):
+        token = get_session_token(request)
+        if not token:
+            return redirect(r("login"))
+
+        mode = (request.POST.get("mode") or "with_ean").strip().lower()
+        all_prods = services.get_products(token, all_groups=True)
+        candidates = [
+            p
+            for p in all_prods
+            if not p.get("is_global")
+            and (mode == "all" or bool((p.get("barcode") or "").strip()))
+        ]
+
+        if not candidates:
+            messages.warning(request, "Nenhum produto elegível encontrado para promoção em lote.")
+            return _moderation_redirect("catalog")
+
+        promoted = 0
+        for p in candidates:
+            pid = p.get("id")
+            if not pid:
+                continue
+            try:
+                services.promote_product_global(token, pid)
+                promoted += 1
+            except services.APIError:
+                pass
+
+        messages.success(
+            request,
+            f"{promoted} produto(s) promovido(s) ao Catálogo Global com sucesso!",
+        )
+        return _moderation_redirect("catalog")
+
+
+class moderation_market_create_view(View):
+    def post(self, request):
+        token = get_session_token(request)
+        if not token:
+            return redirect(r("login"))
+
+        name = (request.POST.get("name") or "").strip()
+        if not name:
+            messages.error(request, "Informe o nome do mercado.")
+            return _moderation_redirect("markets")
+
+        brand = (request.POST.get("brand") or "").strip()
+        city = (request.POST.get("city") or "").strip()
+        address = (request.POST.get("address") or "").strip()
+        lat_raw = (request.POST.get("latitude") or "").strip().replace(",", ".")
+        lng_raw = (request.POST.get("longitude") or "").strip().replace(",", ".")
+
+        payload: dict = {
+            "group_id": "global",
+            "name": name,
+            "brand": brand,
+            "city": city,
+            "address": address,
+            "status": "active",
+        }
+        try:
+            if lat_raw:
+                payload["latitude"] = float(lat_raw)
+            if lng_raw:
+                payload["longitude"] = float(lng_raw)
+        except ValueError:
+            messages.error(request, "Coordenadas inválidas. Use formato decimal (ex.: -23.5505).")
+            return _moderation_redirect("markets")
+
+        try:
+            services.create_market(token, payload)
+            request.session.pop("_nav_badge_ts", None)
+            messages.success(request, f"Mercado '{name}' criado com sucesso!")
+        except services.APIError as exc:
+            messages.error(request, f"Não foi possível criar o mercado: {exc}")
+        return _moderation_redirect("markets")
+
+
 class moderation_market_geo_view(View):
     def post(self, request, market_id):
         token = get_session_token(request)
         if not token:
             return redirect(r("login"))
 
-        city = (request.POST.get("city") or "").strip()
+        payload = {}
+        if "name" in request.POST:
+            name_val = (request.POST.get("name") or "").strip()
+            if name_val:
+                payload["name"] = name_val
+        if "brand" in request.POST:
+            payload["brand"] = (request.POST.get("brand") or "").strip()
+        if "address" in request.POST:
+            payload["address"] = (request.POST.get("address") or "").strip()
+        if "city" in request.POST:
+            city_val = (request.POST.get("city") or "").strip()
+            if city_val or "name" in request.POST:
+                payload["city"] = city_val
+
         lat_raw = (request.POST.get("latitude") or "").strip().replace(",", ".")
         lng_raw = (request.POST.get("longitude") or "").strip().replace(",", ".")
 
-        payload = {}
-        if city:
-            payload["city"] = city
         try:
             if lat_raw:
                 payload["latitude"] = float(lat_raw)
@@ -181,13 +420,28 @@ class moderation_market_geo_view(View):
             return _moderation_redirect("markets")
 
         if not payload:
-            messages.warning(request, "Preencha cidade, latitude ou longitude para atualizar.")
+            messages.warning(request, "Preencha os dados ou coordenadas do mercado para atualizar.")
             return _moderation_redirect("markets")
 
         try:
             services.update_market(token, market_id, payload)
             request.session.pop("_nav_badge_ts", None)
-            messages.success(request, f"Localização do mercado #{market_id} atualizada!")
+            messages.success(request, f"Mercado #{market_id} atualizado com sucesso!")
         except services.APIError as exc:
             messages.error(request, str(exc))
+        return _moderation_redirect("markets")
+
+
+class moderation_market_delete_view(View):
+    def post(self, request, market_id):
+        token = get_session_token(request)
+        if not token:
+            return redirect(r("login"))
+
+        try:
+            services.delete_market(token, market_id)
+            request.session.pop("_nav_badge_ts", None)
+            messages.success(request, f"Mercado #{market_id} excluído com sucesso.")
+        except services.APIError as exc:
+            messages.error(request, f"Não foi possível excluir o mercado: {exc}")
         return _moderation_redirect("markets")

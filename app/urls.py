@@ -20,9 +20,12 @@ from .views.products_view import (
     products_view,
 )
 from .views.moderation_view import (
+    moderation_market_create_view,
+    moderation_market_delete_view,
     moderation_market_geo_view,
     moderation_offer_action_view,
     moderation_product_action_view,
+    moderation_product_bulk_promote_view,
     moderation_view,
 )
 from .views.maintenance_view import (
@@ -61,7 +64,10 @@ urlpatterns = [
     path("moderacao/", moderation_view.as_view(), name="moderation"),
     path("moderacao/oferta/<int:offer_id>/", moderation_offer_action_view.as_view(), name="moderation_offer_action"),
     path("moderacao/produto/<int:product_id>/", moderation_product_action_view.as_view(), name="moderation_product_action"),
+    path("moderacao/produtos/promover-lote/", moderation_product_bulk_promote_view.as_view(), name="moderation_product_bulk_promote"),
+    path("moderacao/mercado/novo/", moderation_market_create_view.as_view(), name="moderation_market_create"),
     path("moderacao/mercado/<int:market_id>/geo/", moderation_market_geo_view.as_view(), name="moderation_market_geo"),
+    path("moderacao/mercado/<int:market_id>/apagar/", moderation_market_delete_view.as_view(), name="moderation_market_delete"),
 
     path("manutencao/", maintenance_view.as_view(), name="maintenance"),
     path("manutencao/health-json/", maintenance_health_json_view.as_view(), name="maintenance_health_json"),

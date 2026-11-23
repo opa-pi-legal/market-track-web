@@ -5,7 +5,7 @@
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
   <div>
     <h1 class="mt-page-title">Moderação &amp; Curadoria</h1>
-    <p class="mt-page-sub">Controle de qualidade das ofertas comunitárias, catálogo global e coordenadas GPS.</p>
+    <p class="mt-page-sub">Controle de qualidade das ofertas comunitárias, curadoria do catálogo global e gestão completa de mercados.</p>
   </div>
   <span class="mt-badge-global py-2 px-3">
     <i class="bi bi-shield-check"></i> Sessão Staff Ativa
@@ -22,11 +22,11 @@
   <a href="?tab=catalog" class="mt-tab-link {% if active_tab == 'catalog' %}active{% endif %}">
     <i class="bi bi-upc-scan"></i>
     <span>Curadoria Global</span>
-    <span class="mt-tab-count mt-num">{{ pending_global_products|length }}</span>
+    <span class="mt-tab-count mt-num">{{ pending_total_count|default:pending_global_products|length }}</span>
   </a>
   <a href="?tab=markets" class="mt-tab-link {% if active_tab == 'markets' %}active{% endif %}">
     <i class="bi bi-geo-alt"></i>
-    <span>Saneamento de Mercados</span>
+    <span>Manutenção de Mercados</span>
     <span class="mt-tab-count mt-num">{{ missing_geo_count }} sem GPS</span>
   </a>
   <a href="?tab=banned" class="mt-tab-link {% if active_tab == 'banned' %}active{% endif %}">
@@ -106,115 +106,585 @@
 {% endif %}
 
 {% if active_tab == 'catalog' %}
+<!-- Resumo da Curadoria Global -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label"><span>Aguardando curadoria</span><i class="bi bi-hourglass-split text-warning"></i></div>
+      <div class="mt-kpi-value mt-num">{{ pending_total_count|default:0 }}</div>
+      <div class="mt-kpi-sub">Criados por grupos</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label"><span>Prontos com EAN</span><i class="bi bi-upc-scan text-success"></i></div>
+      <div class="mt-kpi-value mt-num">{{ pending_with_ean_count|default:0 }}</div>
+      <div class="mt-kpi-sub">Com código de barras</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="mt-kpi-card">
+      <div class="mt-kpi-label"><span>Sem código EAN</span><i class="bi bi-exclamation-circle text-warning"></i></div>
+      <div class="mt-kpi-value mt-num">{{ pending_missing_ean_count|default:0 }}</div>
+      <div class="mt-kpi-sub">Revisar antes de promover</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="mt-kpi-card accent">
+      <div class="mt-kpi-label"><span>Catálogo Global</span><i class="bi bi-globe2"></i></div>
+      <div class="mt-kpi-value mt-num">{{ global_total_count|default:0 }}</div>
+      <div class="mt-kpi-sub">Produtos homologados</div>
+    </div>
+  </div>
+</div>
+
+<datalist id="mtCatalogCategories">
+  {% for cat in catalog_categories %}
+    <option value="{{ cat }}"></option>
+  {% endfor %}
+</datalist>
+
 <section class="mt-surface-card">
-  <div class="mt-card-header-row">
-    <h2 class="mt-card-title"><i class="bi bi-upc-scan text-success"></i> Produtos criados por grupos (prontos para curadoria)</h2>
+  <div class="mt-card-header-row flex-wrap gap-3">
+    <div>
+      <h2 class="mt-card-title">
+        <i class="bi bi-upc-scan text-success"></i>
+        {% if catalog_filter == 'global' %}
+          Produtos no Catálogo Global ({{ pending_global_products|length }})
+        {% else %}
+          Fila de Curadoria Global ({{ pending_global_products|length }})
+        {% endif %}
+      </h2>
+      <p class="small text-secondary mb-0">
+        Clique em "Revisar / Editar" para padronizar nome, marca, categoria e EAN em modal antes de promover.
+      </p>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if pending_with_ean_count %}
+        <form method="post" action="{% url 'moderation_product_bulk_promote' %}"
+              data-mt-confirm="Promover todos os {{ pending_with_ean_count }} produto(s) pendentes que já possuem código EAN ao Catálogo Global?"
+              data-mt-confirm-title="Promoção em lote"
+              data-mt-confirm-btn="Promover em lote"
+              class="m-0">
+          {% csrf_token %}
+          <input type="hidden" name="mode" value="with_ean" />
+          <button type="submit" class="mt-btn-outline py-1 px-3">
+            <i class="bi bi-lightning-charge text-success"></i> Promover todos com EAN ({{ pending_with_ean_count }})
+          </button>
+        </form>
+      {% endif %}
+
+      <button type="button" class="mt-btn-primary py-1 px-3" data-bs-toggle="modal" data-bs-target="#mtCreateGlobalProductModal">
+        <i class="bi bi-plus-lg"></i> Novo Produto Global
+      </button>
+    </div>
+  </div>
+
+  <!-- Barra de busca e filtros da curadoria -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div class="d-flex flex-wrap gap-1">
+      <a href="?tab=catalog&catalog_filter=all{% if catalog_q %}&catalog_q={{ catalog_q|urlencode }}{% endif %}"
+         class="mt-btn-outline py-1 px-3 {% if catalog_filter == 'all' %}active fw-bold{% endif %}">
+        Todos pendentes ({{ pending_total_count|default:0 }})
+      </a>
+      <a href="?tab=catalog&catalog_filter=with_ean{% if catalog_q %}&catalog_q={{ catalog_q|urlencode }}{% endif %}"
+         class="mt-btn-outline py-1 px-3 {% if catalog_filter == 'with_ean' %}active fw-bold{% endif %}">
+        Com EAN ({{ pending_with_ean_count|default:0 }})
+      </a>
+      <a href="?tab=catalog&catalog_filter=missing_ean{% if catalog_q %}&catalog_q={{ catalog_q|urlencode }}{% endif %}"
+         class="mt-btn-outline py-1 px-3 {% if catalog_filter == 'missing_ean' %}active fw-bold{% endif %}">
+        Sem EAN ({{ pending_missing_ean_count|default:0 }})
+      </a>
+      <a href="?tab=catalog&catalog_filter=global{% if catalog_q %}&catalog_q={{ catalog_q|urlencode }}{% endif %}"
+         class="mt-btn-outline py-1 px-3 {% if catalog_filter == 'global' %}active fw-bold{% endif %}">
+        Já Globais ({{ global_total_count|default:0 }})
+      </a>
+    </div>
+
+    <form method="get" class="d-flex gap-2">
+      <input type="hidden" name="tab" value="catalog" />
+      <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
+      <input type="search" name="catalog_q" value="{{ catalog_q }}"
+             placeholder="Buscar nome, marca, EAN ou grupo..."
+             class="mt-input" style="min-width: 240px;" />
+      <button type="submit" class="mt-btn-outline py-1 px-3">
+        <i class="bi bi-search"></i> Filtrar
+      </button>
+      {% if catalog_q %}
+        <a href="?tab=catalog&catalog_filter={{ catalog_filter }}" class="mt-btn-outline py-1 px-2" title="Limpar busca">
+          <i class="bi bi-x-lg"></i>
+        </a>
+      {% endif %}
+    </form>
   </div>
 
   {% if pending_global_products %}
-    <div class="d-flex flex-column gap-2">
-      {% for prod in pending_global_products %}
-        <div class="mt-list-row">
-          <div>
-            <div class="fw-bold">{{ prod.name }}</div>
-            <div class="small text-secondary mt-num">
-              {{ prod.category }} · EAN: <strong>{{ prod.barcode|default:"Sem código" }}</strong>
-              {% if prod.group_id %} · Grupo #{{ prod.group_id }}{% endif %}
-            </div>
-          </div>
+    <div class="mt-table-wrap">
+      <table class="mt-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Produto</th>
+            <th>Categoria</th>
+            <th>Código EAN</th>
+            <th>Origem</th>
+            <th class="text-end">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for prod in pending_global_products %}
+            <tr>
+              <td class="mt-num text-secondary">#{{ prod.id }}</td>
+              <td>
+                <a href="{% url 'product_detail' prod.id %}" class="mt-table-link d-block">{{ prod.name }}</a>
+                {% if prod.brand %}
+                  <span class="small text-secondary">{{ prod.brand }}</span>
+                {% else %}
+                  <span class="small text-secondary fst-italic">Marca não informada</span>
+                {% endif %}
+              </td>
+              <td><span class="mt-badge-group">{{ prod.category }}</span></td>
+              <td class="mt-num">
+                {% if prod.has_ean %}
+                  <span class="mt-badge-global mt-num"><i class="bi bi-upc"></i> {{ prod.barcode }}</span>
+                {% else %}
+                  <span class="mt-badge-warn">Sem EAN</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="mt-badge-group">{{ prod.group_label }}</span>
+                {% if prod.is_global %}
+                  <span class="mt-badge-global ms-1"><i class="bi bi-globe2"></i> Global</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <div class="d-inline-flex flex-wrap align-items-center justify-content-end gap-2">
+                  <button type="button"
+                          class="mt-btn-outline py-1 px-3"
+                          data-mt-open-product-modal
+                          data-action-url="{% url 'moderation_product_action' prod.id %}"
+                          data-product-id="{{ prod.id }}"
+                          data-product-name="{{ prod.name }}"
+                          data-product-brand="{{ prod.brand }}"
+                          data-product-category="{{ prod.category }}"
+                          data-product-barcode="{{ prod.barcode }}"
+                          data-product-group="{{ prod.group_label }}"
+                          data-product-global="{% if prod.is_global %}true{% else %}false{% endif %}">
+                    <i class="bi bi-pencil-square"></i> Revisar / Editar
+                  </button>
 
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <form method="post" action="{% url 'moderation_product_action' prod.id %}" class="m-0">
-              {% csrf_token %}
-              <input type="hidden" name="action" value="promote" />
-              <button type="submit" class="mt-btn-primary py-1 px-3">
-                <i class="bi bi-globe2"></i> Promover a Global
-              </button>
-            </form>
+                  {% if not prod.is_global %}
+                    <form method="post" action="{% url 'moderation_product_action' prod.id %}" class="m-0">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="promote" />
+                      <button type="submit" class="mt-btn-primary py-1 px-3">
+                        <i class="bi bi-globe2"></i> Promover a Global
+                      </button>
+                    </form>
+                  {% endif %}
 
-            <form method="post" action="{% url 'moderation_product_action' prod.id %}"
-                  data-mt-confirm="Recusar e apagar o produto '{{ prod.name }}'?"
-                  data-mt-confirm-title="Recusar produto"
-                  data-mt-confirm-btn="Recusar"
-                  class="m-0">
-              {% csrf_token %}
-              <input type="hidden" name="action" value="reject" />
-              <button type="submit" class="mt-btn-danger-soft">
-                <i class="bi bi-x-circle"></i> Recusar
-              </button>
-            </form>
-          </div>
-        </div>
-      {% endfor %}
+                  <form method="post" action="{% url 'moderation_product_action' prod.id %}"
+                        data-mt-confirm="Recusar e apagar o produto '{{ prod.name }}'?"
+                        data-mt-confirm-title="Recusar produto"
+                        data-mt-confirm-btn="Recusar"
+                        class="m-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="reject" />
+                    <button type="submit" class="mt-btn-danger-soft py-1 px-2" title="Recusar e excluir">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   {% else %}
     <div class="text-center py-5 text-secondary">
       <i class="bi bi-patch-check fs-1 d-block mb-2 text-success opacity-75"></i>
-      Todos os produtos já estão consolidados no Catálogo Global.
+      {% if catalog_q %}
+        Nenhum produto encontrado para "{{ catalog_q }}".
+      {% else %}
+        Todos os produtos já estão consolidados no Catálogo Global.
+      {% endif %}
     </div>
   {% endif %}
 </section>
+
+<!-- Modal: Novo Produto Global (na aba Curadoria) -->
+<div class="modal fade" id="mtCreateGlobalProductModal" tabindex="-1" aria-labelledby="mtCreateGlobalProductLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <div>
+          <h5 class="modal-title fw-bold" id="mtCreateGlobalProductLabel">
+            <i class="bi bi-globe2 text-success me-1"></i> Novo Produto no Catálogo Global
+          </h5>
+          <p class="small text-secondary mb-0">Cadastre um item homologado diretamente para todos os grupos.</p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form method="post" action="{% url 'product_create' %}" data-product-curate-form>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'moderation' %}?tab=catalog" />
+        <div class="modal-body d-flex flex-column gap-3">
+          <div>
+            <label class="form-label small fw-semibold">Nome do produto *</label>
+            <input type="text" name="name" required class="form-control" placeholder="Ex.: Arroz Tio João Tipo 1 5kg" />
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Marca</label>
+              <input type="text" name="brand" class="form-control" placeholder="Ex.: Tio João" />
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Categoria</label>
+              <input type="text" name="category" list="mtCatalogCategories" value="Mercearia" class="form-control" />
+            </div>
+          </div>
+          <div>
+            <label class="form-label small fw-semibold">Código de barras (EAN / GTIN)</label>
+            <div class="input-group">
+              <input type="text" name="barcode" class="form-control mt-num" placeholder="Ex.: 7893500020110" />
+              <button type="button" class="mt-btn-outline px-3" data-off-lookup title="Buscar EAN e marca na OpenFoodFacts">
+                <i class="bi bi-upc-scan"></i> Buscar EAN
+              </button>
+            </div>
+            <div class="small text-secondary mt-1 d-none" data-off-feedback></div>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="mt-btn-outline" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="mt-btn-primary">
+            <i class="bi bi-globe2"></i> Criar no Catálogo Global
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Revisar / Editar Produto na Curadoria Global -->
+<div class="modal fade" id="mtCurateProductModal" tabindex="-1" aria-labelledby="mtCurateProductLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <div>
+          <h5 class="modal-title fw-bold" id="mtCurateProductLabel">
+            <i class="bi bi-upc-scan text-success me-1"></i> Curadoria de Produto <span id="mtCurateProductIdBadge" class="mt-badge-group ms-1"></span>
+          </h5>
+          <p class="small text-secondary mb-0">Origem: <strong id="mtCurateProductGroup">Grupo</strong></p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form method="post" id="mtCurateProductForm" action="" data-product-curate-form>
+        {% csrf_token %}
+        <div class="modal-body d-flex flex-column gap-3">
+          <div>
+            <label class="form-label small fw-semibold">Nome padronizado do produto *</label>
+            <input type="text" name="name" id="mtCurateProductName" required class="form-control" />
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Marca</label>
+              <input type="text" name="brand" id="mtCurateProductBrand" class="form-control" placeholder="Ex.: Nestlé, Sadia..." />
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Categoria</label>
+              <input type="text" name="category" id="mtCurateProductCategory" list="mtCatalogCategories" class="form-control" />
+            </div>
+          </div>
+          <div>
+            <label class="form-label small fw-semibold">Código de barras (EAN / GTIN)</label>
+            <div class="input-group">
+              <input type="text" name="barcode" id="mtCurateProductBarcode" class="form-control mt-num" placeholder="789..." />
+              <button type="button" class="mt-btn-outline px-3" data-off-lookup title="Consultar EAN e marca na OpenFoodFacts">
+                <i class="bi bi-upc-scan"></i> Buscar EAN
+              </button>
+            </div>
+            <div class="small text-secondary mt-1 d-none" data-off-feedback></div>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0 d-flex justify-content-between flex-wrap gap-2">
+          <button type="button" class="mt-btn-outline" data-bs-dismiss="modal">Cancelar</button>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="submit" name="action" value="save" class="mt-btn-outline">
+              <i class="bi bi-check2"></i> Apenas Salvar
+            </button>
+            <button type="submit" name="action" value="promote" id="mtCuratePromoteBtn" class="mt-btn-primary">
+              <i class="bi bi-globe2"></i> Salvar &amp; Promover a Global
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% if active_tab == 'markets' %}
+<!-- Lista Completa & Manutenção de Mercados em Modal -->
 <section class="mt-surface-card">
-  <div class="mt-card-header-row">
-    <h2 class="mt-card-title"><i class="bi bi-geo-alt-fill text-success"></i> Saneamento de Mercados ({{ markets|length }})</h2>
-    <span class="small text-secondary">Use "Buscar GPS" para preencher coordenadas via OpenStreetMap.</span>
+  <div class="mt-card-header-row flex-wrap gap-3">
+    <div>
+      <h2 class="mt-card-title">
+        <i class="bi bi-geo-alt-fill text-success"></i> Manutenção de Mercados ({{ markets|length }})
+      </h2>
+      <p class="small text-secondary mb-0">
+        Cadastre novos mercados, edite dados e coordenadas GPS em modal ou exclua registros inválidos.
+      </p>
+    </div>
+
+    <button type="button" class="mt-btn-primary py-1 px-3" data-bs-toggle="modal" data-bs-target="#mtCreateMarketModal">
+      <i class="bi bi-plus-lg"></i> Cadastrar Novo Mercado
+    </button>
+  </div>
+
+  <!-- Filtros e Busca de Mercados -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div class="d-flex flex-wrap gap-1">
+      <a href="?tab=markets&market_filter=all{% if market_q %}&market_q={{ market_q|urlencode }}{% endif %}"
+         class="mt-btn-outline py-1 px-3 {% if market_filter == 'all' %}active fw-bold{% endif %}">
+        Todos ({{ total_markets_count|default:markets|length }})
+      </a>
+      <a href="?tab=markets&market_filter=missing_geo{% if market_q %}&market_q={{ market_q|urlencode }}{% endif %}"
+         class="mt-btn-outline py-1 px-3 {% if market_filter == 'missing_geo' %}active fw-bold{% endif %}">
+        Sem GPS ({{ missing_geo_count|default:0 }})
+      </a>
+      <a href="?tab=markets&market_filter=with_geo{% if market_q %}&market_q={{ market_q|urlencode }}{% endif %}"
+         class="mt-btn-outline py-1 px-3 {% if market_filter == 'with_geo' %}active fw-bold{% endif %}">
+        Com GPS ({{ with_geo_count|default:0 }})
+      </a>
+    </div>
+
+    <form method="get" class="d-flex gap-2">
+      <input type="hidden" name="tab" value="markets" />
+      <input type="hidden" name="market_filter" value="{{ market_filter }}" />
+      <input type="search" name="market_q" value="{{ market_q }}"
+             placeholder="Buscar mercado, bandeira, cidade ou endereço..."
+             class="mt-input" style="min-width: 250px;" />
+      <button type="submit" class="mt-btn-outline py-1 px-3">
+        <i class="bi bi-search"></i> Filtrar
+      </button>
+      {% if market_q %}
+        <a href="?tab=markets&market_filter={{ market_filter }}" class="mt-btn-outline py-1 px-2" title="Limpar busca">
+          <i class="bi bi-x-lg"></i>
+        </a>
+      {% endif %}
+    </form>
   </div>
 
   {% if markets %}
-    <div class="d-flex flex-column gap-3">
-      {% for m in markets %}
-        <form method="post" action="{% url 'moderation_market_geo' m.id %}" class="mt-list-row m-0 d-block" data-market-geo-form data-market-name="{{ m.name }}">
-          {% csrf_token %}
-          <div class="row g-2 align-items-center">
-            <div class="col-lg-3">
-              <div class="fw-bold">{{ m.name }}</div>
-              <div class="small mt-1 d-flex align-items-center gap-2">
+    <div class="mt-table-wrap">
+      <table class="mt-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Mercado / Bandeira</th>
+            <th>Cidade &amp; Endereço</th>
+            <th>Status GPS</th>
+            <th>Origem</th>
+            <th class="text-end">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in markets %}
+            <tr>
+              <td class="mt-num text-secondary">#{{ m.id }}</td>
+              <td>
+                <div class="fw-bold">{{ m.name }}</div>
+                {% if m.brand %}
+                  <div class="small text-secondary">{{ m.brand }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <div>{{ m.city|default:"Cidade não informada" }}</div>
+                {% if m.address %}
+                  <div class="small text-secondary">{{ m.address }}</div>
+                {% endif %}
+              </td>
+              <td>
                 {% if m.missing_geo %}
                   <span class="mt-badge-warn">Sem GPS</span>
                 {% else %}
                   <span class="mt-badge-global">GPS OK</span>
+                  <div class="small text-secondary mt-num mt-1">{{ m.latitude }}, {{ m.longitude }}</div>
                 {% endif %}
-                <span class="text-secondary mt-num">{{ m.created_at_fmt }}</span>
-              </div>
-            </div>
+              </td>
+              <td>
+                <span class="mt-badge-group">{{ m.group_label|default:"Global" }}</span>
+                <div class="small text-secondary mt-num">{{ m.created_at_fmt }}</div>
+              </td>
+              <td class="text-end">
+                <div class="d-inline-flex align-items-center justify-content-end gap-2">
+                  <button type="button"
+                          class="mt-btn-outline py-1 px-3"
+                          data-mt-open-market-modal
+                          data-action-url="{% url 'moderation_market_geo' m.id %}"
+                          data-market-id="{{ m.id }}"
+                          data-market-name="{{ m.name }}"
+                          data-market-brand="{{ m.brand }}"
+                          data-market-city="{{ m.city }}"
+                          data-market-address="{{ m.address }}"
+                          data-market-lat="{{ m.latitude }}"
+                          data-market-lng="{{ m.longitude }}">
+                    <i class="bi bi-pencil-square"></i> Editar / GPS
+                  </button>
 
-            <div class="col-sm-4 col-lg-2">
-              <input type="text" name="city" value="{{ m.city }}" placeholder="Cidade"
-                     class="mt-input" aria-label="Cidade de {{ m.name }}" />
-            </div>
-
-            <div class="col-sm-4 col-lg-2">
-              <input type="text" name="latitude" value="{{ m.latitude }}" placeholder="Latitude"
-                     class="mt-input mt-num" aria-label="Latitude de {{ m.name }}" />
-            </div>
-
-            <div class="col-sm-4 col-lg-2">
-              <input type="text" name="longitude" value="{{ m.longitude }}" placeholder="Longitude"
-                     class="mt-input mt-num" aria-label="Longitude de {{ m.name }}" />
-            </div>
-
-            <div class="col-lg-3 d-flex gap-2 justify-content-lg-end">
-              <button type="button" class="mt-btn-outline py-1 px-2 flex-grow-1 flex-lg-grow-0" data-geo-lookup title="Buscar coordenadas automaticamente">
-                <i class="bi bi-crosshair"></i> Buscar GPS
-              </button>
-              <button type="submit" class="mt-btn-primary py-1 px-3 flex-grow-1 flex-lg-grow-0">
-                <i class="bi bi-check2"></i> Salvar
-              </button>
-            </div>
-          </div>
-          <div class="small text-secondary mt-1 d-none" data-geo-feedback></div>
-        </form>
-      {% endfor %}
+                  <form method="post" action="{% url 'moderation_market_delete' m.id %}"
+                        data-mt-confirm="Tem certeza que deseja excluir o mercado '{{ m.name }}'?"
+                        data-mt-confirm-title="Excluir mercado"
+                        data-mt-confirm-btn="Excluir mercado"
+                        class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="mt-btn-danger-soft py-1 px-2" title="Excluir mercado">
+                      <i class="bi bi-trash3"></i>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   {% else %}
     <div class="text-center py-5 text-secondary">
-      Nenhum mercado encontrado para saneamento.
+      Nenhum mercado encontrado para o filtro selecionado.
     </div>
   {% endif %}
 </section>
+
+<!-- Modal: Cadastrar Novo Mercado -->
+<div class="modal fade" id="mtCreateMarketModal" tabindex="-1" aria-labelledby="mtCreateMarketLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <div>
+          <h5 class="modal-title fw-bold" id="mtCreateMarketLabel">
+            <i class="bi bi-shop text-success me-1"></i> Cadastrar Novo Mercado
+          </h5>
+          <p class="small text-secondary mb-0">Informe nome e cidade e use "Buscar GPS" para preencher coordenadas.</p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form method="post" action="{% url 'moderation_market_create' %}" data-market-geo-form>
+        {% csrf_token %}
+        <div class="modal-body d-flex flex-column gap-3">
+          <div class="row g-2">
+            <div class="col-sm-7">
+              <label class="form-label small fw-semibold">Nome do mercado *</label>
+              <input type="text" name="name" required class="form-control" placeholder="Ex.: Atacadão Campinas" />
+            </div>
+            <div class="col-sm-5">
+              <label class="form-label small fw-semibold">Rede / Bandeira</label>
+              <input type="text" name="brand" class="form-control" placeholder="Ex.: Atacadão" />
+            </div>
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-5">
+              <label class="form-label small fw-semibold">Cidade</label>
+              <input type="text" name="city" class="form-control" placeholder="Ex.: Campinas" />
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label small fw-semibold">Endereço / Bairro</label>
+              <input type="text" name="address" class="form-control" placeholder="Ex.: Rod. Dom Pedro I, km 138" />
+            </div>
+          </div>
+          <div class="row g-2 align-items-end">
+            <div class="col-sm-4">
+              <label class="form-label small fw-semibold">Latitude</label>
+              <input type="text" name="latitude" class="form-control mt-num" placeholder="-22.9056" />
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small fw-semibold">Longitude</label>
+              <input type="text" name="longitude" class="form-control mt-num" placeholder="-47.0608" />
+            </div>
+            <div class="col-sm-4">
+              <button type="button" class="mt-btn-outline w-100 py-2" data-geo-lookup>
+                <i class="bi bi-crosshair"></i> Buscar GPS
+              </button>
+            </div>
+          </div>
+          <div class="small text-secondary d-none" data-geo-feedback></div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="mt-btn-outline" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="mt-btn-primary">
+            <i class="bi bi-plus-lg"></i> Criar Mercado
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Mercado & Coordenadas GPS -->
+<div class="modal fade" id="mtEditMarketModal" tabindex="-1" aria-labelledby="mtEditMarketLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <div>
+          <h5 class="modal-title fw-bold" id="mtEditMarketLabel">
+            <i class="bi bi-geo-alt-fill text-success me-1"></i> Editar Mercado <span id="mtEditMarketIdBadge" class="mt-badge-group ms-1"></span>
+          </h5>
+          <p class="small text-secondary mb-0">Atualize dados cadastrais ou consulte o GPS via OpenStreetMap.</p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form method="post" id="mtEditMarketForm" action="" data-market-geo-form>
+        {% csrf_token %}
+        <div class="modal-body d-flex flex-column gap-3">
+          <div class="row g-2">
+            <div class="col-sm-7">
+              <label class="form-label small fw-semibold">Nome do mercado *</label>
+              <input type="text" name="name" id="mtEditMarketName" required class="form-control" />
+            </div>
+            <div class="col-sm-5">
+              <label class="form-label small fw-semibold">Rede / Bandeira</label>
+              <input type="text" name="brand" id="mtEditMarketBrand" class="form-control" placeholder="Ex.: Carrefour, Assaí..." />
+            </div>
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-5">
+              <label class="form-label small fw-semibold">Cidade</label>
+              <input type="text" name="city" id="mtEditMarketCity" class="form-control" placeholder="Ex.: São Paulo" />
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label small fw-semibold">Endereço / Bairro</label>
+              <input type="text" name="address" id="mtEditMarketAddress" class="form-control" placeholder="Rua, número ou bairro" />
+            </div>
+          </div>
+          <div class="row g-2 align-items-end">
+            <div class="col-sm-4">
+              <label class="form-label small fw-semibold">Latitude</label>
+              <input type="text" name="latitude" id="mtEditMarketLat" class="form-control mt-num" placeholder="-23.5505" />
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small fw-semibold">Longitude</label>
+              <input type="text" name="longitude" id="mtEditMarketLng" class="form-control mt-num" placeholder="-46.6333" />
+            </div>
+            <div class="col-sm-4">
+              <button type="button" class="mt-btn-outline w-100 py-2" data-geo-lookup>
+                <i class="bi bi-crosshair"></i> Buscar GPS
+              </button>
+            </div>
+          </div>
+          <div class="small text-secondary d-none" data-geo-feedback></div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="mt-btn-outline" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="mt-btn-primary">
+            <i class="bi bi-check2"></i> Salvar Alterações
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% if active_tab == 'banned' %}
@@ -248,17 +718,93 @@
 {% block extra_js %}
 <script>
   (function () {
+    // 1. Abrir Modal de Curadoria / Edição de Produto
+    const curateModalEl = document.getElementById("mtCurateProductModal");
+    if (curateModalEl) {
+      const curateForm = document.getElementById("mtCurateProductForm");
+      const idBadge = document.getElementById("mtCurateProductIdBadge");
+      const groupEl = document.getElementById("mtCurateProductGroup");
+      const nameInput = document.getElementById("mtCurateProductName");
+      const brandInput = document.getElementById("mtCurateProductBrand");
+      const catInput = document.getElementById("mtCurateProductCategory");
+      const barcodeInput = document.getElementById("mtCurateProductBarcode");
+      const promoteBtn = document.getElementById("mtCuratePromoteBtn");
+      const feedback = curateModalEl.querySelector("[data-off-feedback]");
+
+      document.querySelectorAll("[data-mt-open-product-modal]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          curateForm.setAttribute("action", btn.getAttribute("data-action-url") || "");
+          idBadge.textContent = "#" + (btn.getAttribute("data-product-id") || "");
+          groupEl.textContent = btn.getAttribute("data-product-group") || "Grupo";
+          nameInput.value = btn.getAttribute("data-product-name") || "";
+          brandInput.value = btn.getAttribute("data-product-brand") || "";
+          catInput.value = btn.getAttribute("data-product-category") || "Geral";
+          barcodeInput.value = btn.getAttribute("data-product-barcode") || "";
+          const isGlobal = btn.getAttribute("data-product-global") === "true";
+          if (promoteBtn) {
+            promoteBtn.classList.toggle("d-none", isGlobal);
+          }
+          if (feedback) {
+            feedback.classList.add("d-none");
+            feedback.textContent = "";
+          }
+          bootstrap.Modal.getOrCreateInstance(curateModalEl).show();
+        });
+      });
+    }
+
+    // 2. Abrir Modal de Edição de Mercado
+    const editMarketModalEl = document.getElementById("mtEditMarketModal");
+    if (editMarketModalEl) {
+      const marketForm = document.getElementById("mtEditMarketForm");
+      const idBadge = document.getElementById("mtEditMarketIdBadge");
+      const nameInput = document.getElementById("mtEditMarketName");
+      const brandInput = document.getElementById("mtEditMarketBrand");
+      const cityInput = document.getElementById("mtEditMarketCity");
+      const addrInput = document.getElementById("mtEditMarketAddress");
+      const latInput = document.getElementById("mtEditMarketLat");
+      const lngInput = document.getElementById("mtEditMarketLng");
+      const feedback = editMarketModalEl.querySelector("[data-geo-feedback]");
+
+      document.querySelectorAll("[data-mt-open-market-modal]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          marketForm.setAttribute("action", btn.getAttribute("data-action-url") || "");
+          idBadge.textContent = "#" + (btn.getAttribute("data-market-id") || "");
+          nameInput.value = btn.getAttribute("data-market-name") || "";
+          brandInput.value = btn.getAttribute("data-market-brand") || "";
+          cityInput.value = btn.getAttribute("data-market-city") || "";
+          addrInput.value = btn.getAttribute("data-market-address") || "";
+          latInput.value = btn.getAttribute("data-market-lat") || "";
+          lngInput.value = btn.getAttribute("data-market-lng") || "";
+          if (feedback) {
+            feedback.classList.add("d-none");
+            feedback.textContent = "";
+          }
+          bootstrap.Modal.getOrCreateInstance(editMarketModalEl).show();
+        });
+      });
+    }
+
+    // 3. Busca de coordenadas GPS via OpenStreetMap Nominatim (dentro dos modais de Criar e Editar Mercado)
     document.querySelectorAll("[data-geo-lookup]").forEach(function (btn) {
       btn.addEventListener("click", async function () {
         const form = btn.closest("[data-market-geo-form]");
         if (!form) return;
-        const name = form.getAttribute("data-market-name") || "";
+        const nameInput = form.querySelector('input[name="name"]');
+        const name = (nameInput ? nameInput.value.trim() : "") || form.getAttribute("data-market-name") || "";
+        const addressInput = form.querySelector('input[name="address"]');
         const cityInput = form.querySelector('input[name="city"]');
         const latInput = form.querySelector('input[name="latitude"]');
         const lngInput = form.querySelector('input[name="longitude"]');
         const feedback = form.querySelector("[data-geo-feedback]");
 
-        const query = [name, cityInput ? cityInput.value.trim() : "", "Brasil"].filter(Boolean).join(", ");
+        const query = [
+          name,
+          addressInput ? addressInput.value.trim() : "",
+          cityInput ? cityInput.value.trim() : "",
+          "Brasil"
+        ].filter(Boolean).join(", ");
+
         const origHtml = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Buscando...';
@@ -278,8 +824,12 @@
             if (cityInput && !cityInput.value.trim() && hit.address) {
               cityInput.value = hit.address.city || hit.address.town || hit.address.municipality || "";
             }
+            if (addressInput && !addressInput.value.trim() && hit.address) {
+              const road = [hit.address.road, hit.address.suburb || hit.address.neighbourhood].filter(Boolean).join(" - ");
+              if (road) addressInput.value = road;
+            }
             if (feedback) {
-              feedback.textContent = "Encontrado: " + (hit.display_name || "").slice(0, 95) + " — clique em Salvar para confirmar.";
+              feedback.textContent = "Encontrado: " + (hit.display_name || "").slice(0, 105) + " — confirme clicando em Salvar/Criar.";
               feedback.classList.remove("d-none");
             }
           } else if (feedback) {
@@ -289,6 +839,73 @@
         } catch (_) {
           if (feedback) {
             feedback.textContent = "Falha ao consultar OpenStreetMap. Preencha manualmente ou tente novamente.";
+            feedback.classList.remove("d-none");
+          }
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
+      });
+    });
+
+    // 4. Busca de EAN / Marca na OpenFoodFacts (dentro dos modais de Curadoria Global)
+    document.querySelectorAll("[data-off-lookup]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const form = btn.closest("[data-product-curate-form]");
+        if (!form) return;
+        const nameInput = form.querySelector('input[name="name"]');
+        const brandInput = form.querySelector('input[name="brand"]');
+        const barcodeInput = form.querySelector('input[name="barcode"]');
+        const feedback = form.querySelector("[data-off-feedback]");
+
+        const nameVal = nameInput ? nameInput.value.trim() : "";
+        const barcodeVal = barcodeInput ? barcodeInput.value.trim() : "";
+        if (!nameVal && !barcodeVal) return;
+
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Buscando...';
+        if (feedback) {
+          feedback.classList.add("d-none");
+          feedback.textContent = "";
+        }
+
+        try {
+          let hit = null;
+          if (barcodeVal && /^\d{8,14}$/.test(barcodeVal)) {
+            const r = await fetch("https://world.openfoodfacts.org/api/v2/product/" + encodeURIComponent(barcodeVal) + ".json");
+            const d = await r.json();
+            if (d && d.product) hit = d.product;
+          } else {
+            const url = "https://br.openfoodfacts.org/cgi/search.pl?search_terms=" + encodeURIComponent(nameVal) + "&search_simple=1&action=process&json=1&page_size=3";
+            const r = await fetch(url);
+            const d = await r.json();
+            if (d && Array.isArray(d.products) && d.products.length > 0) {
+              hit = d.products.find(p => p.code && (p.product_name || p.product_name_pt)) || d.products[0];
+            }
+          }
+
+          if (hit) {
+            if (barcodeInput && !barcodeInput.value.trim() && hit.code) {
+              barcodeInput.value = hit.code;
+            }
+            if (brandInput && !brandInput.value.trim() && hit.brands) {
+              brandInput.value = String(hit.brands).split(",")[0].trim();
+            }
+            if (nameInput && !nameInput.value.trim() && (hit.product_name_pt || hit.product_name)) {
+              nameInput.value = (hit.product_name_pt || hit.product_name).trim();
+            }
+            if (feedback) {
+              feedback.textContent = "OpenFoodFacts: EAN " + (hit.code || "—") + " · " + (hit.product_name_pt || hit.product_name || "") + " (" + (hit.brands || "sem marca") + ")";
+              feedback.classList.remove("d-none");
+            }
+          } else if (feedback) {
+            feedback.textContent = "Nenhum registro encontrado na OpenFoodFacts para '" + (barcodeVal || nameVal) + "'.";
+            feedback.classList.remove("d-none");
+          }
+        } catch (_) {
+          if (feedback) {
+            feedback.textContent = "Não foi possível consultar a OpenFoodFacts no momento.";
             feedback.classList.remove("d-none");
           }
         } finally {
