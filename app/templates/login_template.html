@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MercadoTracker — Entrar</title>
+  <link rel="icon" type="image/jpeg" href="{% static 'images/logo.jpg' %}" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -19,9 +20,7 @@
   <!-- Cabeçalho -->
   <header class="mt-header">
     <a href="{% url 'login' %}" class="mt-brand">
-      <span class="mt-brand-logo">
-        <i class="bi bi-flower1"></i>
-      </span>
+      <img src="{% static 'images/logo.jpg' %}" alt="MercadoTracker" class="mt-brand-logo-img" />
       <span>MercadoTracker</span>
     </a>
     <button type="button" class="mt-theme-toggle" data-mt-theme-toggle aria-label="Alternar tema">

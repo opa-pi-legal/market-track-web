@@ -87,7 +87,7 @@ class maintenance_simulate_offer_view(View):
             "price_cents": price_cents,
             "category": "Mercearia",
             "city": city,
-            "is_promotion": True,
+            "is_promotion": False,
             "broadcast_alert": True,
         }
         if ean:
@@ -97,7 +97,7 @@ class maintenance_simulate_offer_view(View):
             created = services.create_community_offer(token, payload)
             messages.success(
                 request,
-                f"Oferta #{created.get('id')} disparada! Notificação enviada para os aplicativos móveis.",
+                f"Preço comunitário #{created.get('id')} ({product_name}) disparado! Notificação enviada para os aplicativos móveis.",
             )
         except services.APIError as exc:
             messages.error(request, f"Erro ao simular oferta: {exc}")
