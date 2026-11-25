@@ -5,7 +5,7 @@
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
   <div>
     <h1 class="mt-page-title">Moderação &amp; Curadoria</h1>
-    <p class="mt-page-sub">Controle de qualidade das ofertas comunitárias, curadoria do catálogo global e gestão completa de mercados.</p>
+    <p class="mt-page-sub">Controle de qualidade dos preços comunitários, curadoria do catálogo global e gestão completa de mercados.</p>
   </div>
   <span class="mt-badge-global py-2 px-3">
     <i class="bi bi-shield-check"></i> Sessão Staff Ativa
@@ -16,7 +16,7 @@
 <div class="mt-tabs" role="tablist">
   <a href="?tab=offers" class="mt-tab-link {% if active_tab == 'offers' %}active{% endif %}">
     <i class="bi bi-flag"></i>
-    <span>Ofertas denunciadas</span>
+    <span>Preços denunciados</span>
     <span class="mt-tab-count mt-num">{{ flagged_offers|length }}</span>
   </a>
   <a href="?tab=catalog" class="mt-tab-link {% if active_tab == 'catalog' %}active{% endif %}">
@@ -516,10 +516,23 @@
               </td>
               <td>
                 <span class="mt-badge-group">{{ m.group_label|default:"Global" }}</span>
+                {% if m.is_verified %}
+                  <span class="mt-badge-global ms-1"><i class="bi bi-patch-check-fill"></i> Verificado ({{ m.linked_groups_count }})</span>
+                {% else %}
+                  <span class="small text-secondary ms-1 mt-num">({{ m.linked_groups_count }} grupo{{ m.linked_groups_count|pluralize:"s" }})</span>
+                {% endif %}
                 <div class="small text-secondary mt-num">{{ m.created_at_fmt }}</div>
               </td>
               <td class="text-end">
                 <div class="d-inline-flex align-items-center justify-content-end gap-2">
+                  {% if not m.is_verified %}
+                    <form method="post" action="{% url 'moderation_market_verify' m.id %}" class="m-0">
+                      {% csrf_token %}
+                      <button type="submit" class="mt-btn-outline py-1 px-2" title="Verificar mercado na comunidade">
+                        <i class="bi bi-patch-check text-success"></i> Verificar
+                      </button>
+                    </form>
+                  {% endif %}
                   <button type="button"
                           class="mt-btn-outline py-1 px-3"
                           data-mt-open-market-modal

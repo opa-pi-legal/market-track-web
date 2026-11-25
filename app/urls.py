@@ -23,6 +23,7 @@ from .views.moderation_view import (
     moderation_market_create_view,
     moderation_market_delete_view,
     moderation_market_geo_view,
+    moderation_market_verify_view,
     moderation_offer_action_view,
     moderation_product_action_view,
     moderation_product_bulk_promote_view,
@@ -67,6 +68,7 @@ urlpatterns = [
     path("moderacao/produtos/promover-lote/", moderation_product_bulk_promote_view.as_view(), name="moderation_product_bulk_promote"),
     path("moderacao/mercado/novo/", moderation_market_create_view.as_view(), name="moderation_market_create"),
     path("moderacao/mercado/<int:market_id>/geo/", moderation_market_geo_view.as_view(), name="moderation_market_geo"),
+    path("moderacao/mercado/<int:market_id>/verificar/", moderation_market_verify_view.as_view(), name="moderation_market_verify"),
     path("moderacao/mercado/<int:market_id>/apagar/", moderation_market_delete_view.as_view(), name="moderation_market_delete"),
 
     path("manutencao/", maintenance_view.as_view(), name="maintenance"),

@@ -419,6 +419,10 @@ def delete_market(token: str, market_id) -> None:
     api_request("DELETE", f"/market-api/api/market/{market_id}/", token=token)
 
 
+def verify_market(token: str, market_id) -> dict:
+    return api_request("POST", f"/market-api/api/market/{market_id}/verify/", token=token)
+
+
 # ---------------------------------------------------------------------------
 # Healthchecks (Manutenção)
 # ---------------------------------------------------------------------------

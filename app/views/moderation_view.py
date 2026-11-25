@@ -185,6 +185,8 @@ class moderation_view(View):
                     "longitude": "" if lng is None else lng,
                     "group_id": gid,
                     "group_label": _resolve_group_label(gid, groups_by_id),
+                    "is_verified": bool(m.get("is_verified")),
+                    "linked_groups_count": int(m.get("linked_groups_count") or 1),
                     "created_at_fmt": format_iso_date(m.get("created_at")),
                     "missing_geo": missing_geo,
                 }
@@ -429,6 +431,20 @@ class moderation_market_geo_view(View):
             messages.success(request, f"Mercado #{market_id} atualizado com sucesso!")
         except services.APIError as exc:
             messages.error(request, str(exc))
+        return _moderation_redirect("markets")
+
+
+class moderation_market_verify_view(View):
+    def post(self, request, market_id):
+        token = get_session_token(request)
+        if not token:
+            return redirect(r("login"))
+
+        try:
+            services.verify_market(token, market_id)
+            messages.success(request, f"Mercado #{market_id} marcado como Verificado na comunidade!")
+        except services.APIError as exc:
+            messages.error(request, f"Não foi possível verificar o mercado: {exc}")
         return _moderation_redirect("markets")
 
 
