@@ -337,6 +337,7 @@ class MarketTrackWebTests(TestCase):
         self.client.post(reverse("product_delete", kwargs={"product_id": 42}))
         mock_delete.assert_called_once()
 
+    @patch("app.services.verify_market")
     @patch("app.services.delete_market")
     @patch("app.services.create_market")
     @patch("app.services.update_product")
@@ -361,6 +362,7 @@ class MarketTrackWebTests(TestCase):
         mock_update_product,
         mock_create_market,
         mock_delete_market,
+        mock_verify_market,
     ):
         self._login_session(is_staff=True)
         mock_groups.return_value = [{"id": 1, "name": "Família Silva"}]
@@ -451,7 +453,10 @@ class MarketTrackWebTests(TestCase):
         )
         mock_update_market.assert_called_once()
 
-        # Excluir mercado
+        # Excluir mercado e verificar mercado
+        self.client.post(reverse("moderation_market_verify", kwargs={"market_id": 9}))
+        mock_verify_market.assert_called_once_with("fake-jwt-token", 9)
+
         self.client.post(reverse("moderation_market_delete", kwargs={"market_id": 9}))
         mock_delete_market.assert_called_once_with("fake-jwt-token", 9)
 
@@ -491,10 +496,10 @@ class MarketTrackWebTests(TestCase):
 
         resp = self.client.get(reverse("maintenance"))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Simulador ofertas comunitárias")
+        self.assertContains(resp, "Simulador de preços comunitários")
         self.assertContains(resp, "Filas do RabbitMQ")
         self.assertContains(resp, "core_api.events")
-        self.assertContains(resp, "Disparar Oferta")
+        self.assertContains(resp, "Disparar Preço")
         self.assertContains(resp, "Abrir docs")
         self.assertNotContains(resp, "Preset:")
 
